@@ -1,0 +1,11 @@
+add_executable(minesweeper_engine_tests engine_tests.cpp)
+target_link_libraries(minesweeper_engine_tests PRIVATE Minesweeper::Engine)
+add_test(NAME minesweeper_engine_tests COMMAND minesweeper_engine_tests)
+
+if(CALM_BUILD_APPS)
+    add_executable(minesweeper_game_tests minesweeper_game_tests.cpp ../app/MinesweeperGame.h ../app/MinesweeperGame.cpp)
+    target_include_directories(minesweeper_game_tests PRIVATE ../app)
+    target_link_libraries(minesweeper_game_tests PRIVATE Minesweeper::Engine calm_framework Qt6::Test)
+    add_test(NAME minesweeper_game_tests COMMAND minesweeper_game_tests)
+    set_tests_properties(minesweeper_game_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
