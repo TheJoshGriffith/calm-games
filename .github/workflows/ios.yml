@@ -7,13 +7,44 @@ on:
   workflow_dispatch:
 
 jobs:
-  sudoku:
-    name: Sudoku (iOS)
+  games:
+    # Every game with an iOS app (games/<name>/app/ios/Info.plist.in) gets its
+    # own build and simulator launch. The scheme is the app's CMake target and
+    # the bundle ID is com.thejoshgriffith.calm.<name>.
+    name: Find iOS games
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.find.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, pathlib, re
+          games = []
+          for plist in sorted(pathlib.Path("games").glob("*/app/ios/Info.plist.in")):
+              name = plist.parts[1]
+              cmake = (plist.parents[1] / "CMakeLists.txt").read_text()
+              scheme = re.search(r"qt_add_executable\((\w+)", cmake).group(1)
+              games.append({"name": name, "title": name.capitalize(), "scheme": scheme,
+                            "bundle": f"com.thejoshgriffith.calm.{name}"})
+          print("matrix=" + json.dumps({"include": games}))
+          PY
+          cat "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.title }} (iOS)
+    needs: games
     runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.games.outputs.matrix) }}
     env:
       # Signing and upload happen only on main, once the App Store Connect
-      # secrets exist; pull requests just check that the iOS build compiles.
-      CAN_UPLOAD: ${{ github.event_name != 'pull_request' && secrets.ASC_KEY_ID != '' && secrets.APPLE_TEAM_ID != '' }}
+      # secrets exist, and only for games listed in the TESTFLIGHT_GAMES repo
+      # variable (space-separated; each needs its App Store Connect app record).
+      # Pull requests and other games just check that the iOS build compiles.
+      CAN_UPLOAD: ${{ github.event_name != 'pull_request' && secrets.ASC_KEY_ID != '' && secrets.APPLE_TEAM_ID != '' && contains(format(' {0} ', vars.TESTFLIGHT_GAMES || 'sudoku'), format(' {0} ', matrix.name)) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -56,7 +87,7 @@ jobs:
       - name: Build (unsigned)
         if: env.CAN_UPLOAD != 'true'
         run: |
-          xcodebuild -project build-ios/CalmGames.xcodeproj -scheme CalmSudoku \
+          xcodebuild -project build-ios/CalmGames.xcodeproj -scheme "${{ matrix.scheme }}" \
             -configuration Release -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO build | tail -n 50
           exit "${PIPESTATUS[0]}"
@@ -76,9 +107,9 @@ jobs:
                 -authenticationKeyID "$ASC_KEY_ID"
                 -authenticationKeyIssuerID "$ASC_ISSUER_ID")
 
-          xcodebuild -project build-ios/CalmGames.xcodeproj -scheme CalmSudoku \
+          xcodebuild -project build-ios/CalmGames.xcodeproj -scheme "${{ matrix.scheme }}" \
             -configuration Release -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/Sudoku.xcarchive" "${AUTH[@]}" archive | tail -n 50
+            -archivePath "$RUNNER_TEMP/App.xcarchive" "${AUTH[@]}" archive | tail -n 50
           test "${PIPESTATUS[0]}" -eq 0
 
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
@@ -95,17 +126,23 @@ jobs:
           </plist>
           PLIST
 
-          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Sudoku.xcarchive" \
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
             -exportPath "$RUNNER_TEMP/export" "${AUTH[@]}"
 
           rm -f "$KEY_PATH"
 
-  sudoku-simulator:
+  simulator:
     # Launches the real iOS app in the simulator with the QML smoke test, so a
-    # start-up crash or missing QML import fails CI instead of TestFlight.
-    name: Sudoku (iOS simulator launch)
+    # start-up crash or missing QML import fails CI instead of TestFlight. The
+    # app must honour CALM_SMOKE_TEST and append its messages to CALM_SMOKE_LOG
+    # (see games/sudoku/app/main.cpp).
+    name: ${{ matrix.title }} (iOS simulator launch)
+    needs: games
     runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.games.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -142,14 +179,14 @@ jobs:
 
       - name: Build for the simulator
         run: |
-          xcodebuild -project build-sim/CalmGames.xcodeproj -scheme CalmSudoku \
+          xcodebuild -project build-sim/CalmGames.xcodeproj -scheme "${{ matrix.scheme }}" \
             -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build-sim/dd CODE_SIGNING_ALLOWED=NO build | tail -n 30
           exit "${PIPESTATUS[0]}"
 
       - name: Launch in the simulator
         run: |
-          APP=$(find build-sim -path '*Release-iphonesimulator/CalmSudoku.app' -type d | head -n 1)
+          APP=$(find build-sim -path '*Release-iphonesimulator/${{ matrix.scheme }}.app' -type d | head -n 1)
           echo "App: $APP"
           UDID=$(xcrun simctl list devices available -j | python3 -c '
           import json, sys
@@ -159,11 +196,11 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
           # The app appends its messages to CALM_SMOKE_LOG inside its own container.
-          DATA=$(xcrun simctl get_app_container "$UDID" com.thejoshgriffith.calm.sudoku data)
+          DATA=$(xcrun simctl get_app_container "$UDID" ${{ matrix.bundle }} data)
           LOG="$DATA/tmp/smoke.log"
           mkdir -p "$DATA/tmp"
           SIMCTL_CHILD_CALM_SMOKE_TEST=1 SIMCTL_CHILD_CALM_SMOKE_LOG="$LOG" \
-            xcrun simctl launch "$UDID" com.thejoshgriffith.calm.sudoku
+            xcrun simctl launch "$UDID" ${{ matrix.bundle }}
           sleep 30
           echo "--- app log ---"
           cat "$LOG" || echo "(no log written)"
@@ -175,4 +212,4 @@ jobs:
         if: failure()
         run: |
           ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head
-          for f in $(ls -t ~/Library/Logs/DiagnosticReports/CalmSudoku* 2>/dev/null | head -n 1); do head -c 20000 "$f"; done
+          for f in $(ls -t ~/Library/Logs/DiagnosticReports/${{ matrix.scheme }}* 2>/dev/null | head -n 1); do head -c 20000 "$f"; done

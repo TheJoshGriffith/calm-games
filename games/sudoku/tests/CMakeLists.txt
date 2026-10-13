@@ -2,6 +2,10 @@ add_executable(sudoku_engine_tests engine_tests.cpp)
 target_link_libraries(sudoku_engine_tests PRIVATE Sudoku::Engine)
 add_test(NAME sudoku_engine_tests COMMAND sudoku_engine_tests)
 
+add_executable(sudoku_share_tests share_tests.cpp)
+target_link_libraries(sudoku_share_tests PRIVATE Sudoku::Engine)
+add_test(NAME sudoku_share_tests COMMAND sudoku_share_tests)
+
 if(CALM_BUILD_APPS)
     add_executable(sudoku_game_tests sudoku_game_tests.cpp ../app/SudokuGame.h ../app/SudokuGame.cpp)
     target_include_directories(sudoku_game_tests PRIVATE ../app)

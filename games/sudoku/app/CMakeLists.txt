@@ -1,5 +1,7 @@
 qt_add_executable(CalmSudoku main.cpp)
 
+set_source_files_properties(qml/CellColours.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(CalmSudoku
     URI Sudoku
     VERSION 1.0
@@ -12,6 +14,7 @@ qt_add_qml_module(CalmSudoku
         qml/GamePage.qml
         qml/Board.qml
         qml/NumberPad.qml
+        qml/CellColours.qml
         qml/SudokuSettingsPage.qml
 )
 
