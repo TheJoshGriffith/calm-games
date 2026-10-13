@@ -45,14 +45,14 @@ CalmPage {
         width: parent.width
 
         ActionButton {
-            width: parent.width / 4
+            width: parent.width / 3
             iconPath: Icons.undo
             text: qsTr("Undo")
             enabled: page.game.canUndo && !page.game.autoFinishing
             onClicked: page.game.undo()
         }
         ActionButton {
-            width: parent.width / 4
+            width: parent.width / 3
             iconPath: Icons.hint
             text: qsTr("Hint")
             enabled: page.game.active && !page.game.autoFinishing
@@ -62,18 +62,77 @@ CalmPage {
             }
         }
         ActionButton {
-            width: parent.width / 4
-            iconPath: Icons.play
-            text: qsTr("Finish")
-            enabled: page.game.canAutoFinish && !page.game.autoFinishing
-            onClicked: page.game.autoFinish()
-        }
-        ActionButton {
-            width: parent.width / 4
+            width: parent.width / 3
             iconPath: page.shuffleIcon
             text: qsTr("New deal")
             enabled: !page.game.loading
             onClicked: page.game.startNewGame(page.game.level)
+        }
+    }
+
+    // Every card is face up: offer to play the rest home.
+    CardButton {
+        id: autoComplete
+
+        readonly property bool offered: page.game.autoCompleteButton && page.game.canAutoFinish
+                                        && !page.game.autoFinishing && !page.game.losingMove
+
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: toolbar.top
+        anchors.bottomMargin: 12
+        width: Math.min(parent.width, 280)
+        text: qsTr("Auto-complete")
+        subtitle: qsTr("Play the remaining cards home")
+        enabled: offered
+        opacity: offered ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: Theme.gentle } }
+        onClicked: page.game.autoFinish()
+        Icon { path: Icons.play; color: Theme.accent }
+    }
+
+    // The solver found that the last move lost the deal.
+    Rectangle {
+        id: losing
+
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: toolbar.top
+        anchors.bottomMargin: 12
+        width: parent.width
+        height: losingRow.implicitHeight + 24
+        radius: Theme.radius
+        color: Theme.surface
+        border.color: Theme.danger
+        opacity: page.game.losingMove ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: Theme.gentle } }
+
+        Accessible.role: Accessible.AlertMessage
+        Accessible.name: losingText.text
+
+        Row {
+            id: losingRow
+            anchors.verticalCenter: parent.verticalCenter
+            x: 16
+            width: parent.width - 24
+            spacing: 8
+
+            CalmText {
+                id: losingText
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - undoLosing.width - parent.spacing
+                text: qsTr("That move means this deal can't be won any more.")
+                wrapMode: Text.WordWrap
+                font.pixelSize: 14
+            }
+            ActionButton {
+                id: undoLosing
+                anchors.verticalCenter: parent.verticalCenter
+                iconPath: Icons.undo
+                text: qsTr("Undo")
+                enabled: page.game.losingMove
+                onClicked: page.game.undo()
+            }
         }
     }
 

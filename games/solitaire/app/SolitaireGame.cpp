@@ -1,5 +1,7 @@
 #include "SolitaireGame.h"
 
+#include <algorithm>
+
 #include <QRandomGenerator>
 #include <QtConcurrent/QtConcurrentRun>
 
@@ -33,6 +35,11 @@ SolitaireGame::SolitaireGame(QObject* parent)
 
 SolitaireGame::~SolitaireGame()
 {
+    m_stopAnalysis = true;
+    if (m_analysis) {
+        m_analysis->disconnect(this);
+        m_analysis->waitForFinished();
+    }
     for (auto* watcher : std::as_const(m_watchers)) {
         watcher->disconnect(this);
         watcher->waitForFinished();
@@ -109,6 +116,7 @@ void SolitaireGame::draw()
         return;
     beginMove();
     clearHint();
+    setLosingMove(false);
     const DrawResult result = m_table.draw();
     ++m_moves;
     emitFeedback(result == DrawResult::Recycled ? QStringLiteral("erase") : QStringLiteral("soft"));
@@ -119,8 +127,10 @@ bool SolitaireGame::perform(const Move& move)
 {
     if (!m_table.canMove(move))
         return false;
+    const std::string before = m_table.serialize();
     beginMove();
     clearHint();
+    setLosingMove(false);
     const solitaire::MoveResult result = m_table.move(move);
     ++m_moves;
     if (m_table.won()) {
@@ -134,20 +144,18 @@ bool SolitaireGame::perform(const Move& move)
     else
         emitFeedback(QStringLiteral("tap"));
     endMove();
+    if (!autoFinishing())
+        checkForLosingMove(before);
     return true;
 }
 
-bool SolitaireGame::tapCard(int cardId)
+bool SolitaireGame::quickMove(int cardId)
 {
     if (!active() || complete() || autoFinishing())
         return false;
     const auto where = locate(cardId);
-    if (!where)
+    if (!where || where->pile.kind == PileKind::Stock)
         return false;
-    if (where->pile.kind == PileKind::Stock) {
-        draw();
-        return true;
-    }
     if (const auto best = m_table.bestMove(where->pile, where->pos))
         return perform(*best);
     emitFeedback(QStringLiteral("error"));
@@ -242,11 +250,30 @@ void SolitaireGame::clearHint()
     emit hintChanged();
 }
 
+bool SolitaireGame::canAutoFinish() const
+{
+    return active() && !complete() && m_table.canAutoFinish() && finishPath().has_value();
+}
+
+std::optional<std::vector<solitaire::Hint>> SolitaireGame::finishPath() const
+{
+    // Only asked once every card is face up, when the search is short.
+    const std::string now = m_table.serialize();
+    if (now != m_finishFor) {
+        m_finishFor = now;
+        m_finishFound = solitaire::solvePath(m_table);
+    }
+    return m_finishFound;
+}
+
 void SolitaireGame::autoFinish()
 {
     if (!canAutoFinish() || autoFinishing())
         return;
     clearHint();
+    setLosingMove(false);
+    m_finishSteps = *finishPath();
+    std::reverse(m_finishSteps.begin(), m_finishSteps.end());
     m_finishTimer.start();
     emit autoFinishingChanged();
     finishStep();
@@ -254,28 +281,94 @@ void SolitaireGame::autoFinish()
 
 void SolitaireGame::finishStep()
 {
-    const auto step = m_table.autoFinishStep();
-    if (!step || paused()) {
-        if (!step)
-            stopAutoFinish();
+    if (paused())
+        return;
+    if (m_finishSteps.empty() || complete()) {
+        stopAutoFinish();
         return;
     }
-    if (step->draw) {
+    const solitaire::Hint step = m_finishSteps.back();
+    m_finishSteps.pop_back();
+    if (step.draw) {
         beginMove();
         m_table.draw();
         ++m_moves;
+        emitFeedback(QStringLiteral("soft"));
         endMove();
-        return;
+    } else if (!perform(step.move)) {
+        stopAutoFinish();
     }
-    perform(step->move);
 }
 
 void SolitaireGame::stopAutoFinish()
 {
+    m_finishSteps.clear();
     if (!m_finishTimer.isActive())
         return;
     m_finishTimer.stop();
     emit autoFinishingChanged();
+}
+
+void SolitaireGame::setLosingMove(bool losing)
+{
+    if (m_losingMove == losing)
+        return;
+    m_losingMove = losing;
+    emit losingMoveChanged();
+}
+
+void SolitaireGame::checkForLosingMove(const std::string& before)
+{
+    if (!warnLosingMoves())
+        return;
+    // Positions on the hint's winning line are known to be winnable.
+    const std::string now = m_table.serialize();
+    for (const auto& planned : m_plan)
+        if (planned.first == now)
+            return;
+    m_pendingAnalysis = Analysis { before, m_table };
+    if (!m_analysis)
+        startAnalysis();
+}
+
+void SolitaireGame::startAnalysis()
+{
+    if (!m_pendingAnalysis)
+        return;
+    const Analysis job = *m_pendingAnalysis;
+    m_pendingAnalysis.reset();
+
+    const QByteArray after = QByteArray::fromStdString(job.after.serialize());
+    if (m_verdicts.contains(after)) {
+        // Seen before (say, after undo and the same move again).
+        if (m_verdicts.value(after) == int(solitaire::Verdict::Unwinnable)
+            && m_verdicts.value(QByteArray::fromStdString(job.before), -1) != int(solitaire::Verdict::Unwinnable)
+            && m_table.serialize() == job.after.serialize())
+            setLosingMove(true);
+        startAnalysis();
+        return;
+    }
+
+    m_analysis = new QFutureWatcher<solitaire::Verdict>(this);
+    connect(m_analysis, &QFutureWatcherBase::finished, this, [this, job, after] {
+        const solitaire::Verdict verdict = m_analysis->result();
+        m_analysis->deleteLater();
+        m_analysis = nullptr;
+        if (verdict != solitaire::Verdict::Unknown)
+            m_verdicts.insert(after, int(verdict));
+        // Warn only while that position is still on the table, and only for
+        // the move that lost the game, not every move after it.
+        const bool wasLost = m_verdicts.value(QByteArray::fromStdString(job.before), -1) == int(solitaire::Verdict::Unwinnable);
+        if (verdict == solitaire::Verdict::Unwinnable && !wasLost && active() && !complete()
+            && m_table.serialize() == job.after.serialize()) {
+            setLosingMove(true);
+            emitFeedback(QStringLiteral("error"));
+        }
+        startAnalysis();
+    });
+    const solitaire::Klondike table = job.after;
+    std::atomic_bool* stop = &m_stopAnalysis;
+    m_analysis->setFuture(QtConcurrent::run([table, stop] { return solitaire::solveExhaustive(table, 400000, stop); }));
 }
 
 void SolitaireGame::createGame(const QString& level)
@@ -335,6 +428,12 @@ void SolitaireGame::startWith(const solitaire::Deal& deal)
     m_seed = deal.seed;
     m_moves = 0;
     clearHint();
+    m_plan.clear();
+    m_verdicts.clear();
+    m_pendingAnalysis.reset();
+    setLosingMove(false);
+    if (deal.proven)
+        m_verdicts.insert(QByteArray::fromStdString(m_table.serialize()), int(solitaire::Verdict::Winnable));
     beginGame();
 }
 
@@ -357,6 +456,10 @@ bool SolitaireGame::restoreState(const QVariantMap& state)
     m_seed = state.value(QStringLiteral("seed")).toString().toULongLong();
     m_moves = std::max(0, state.value(QStringLiteral("moves")).toInt());
     clearHint();
+    m_plan.clear();
+    m_verdicts.clear();
+    m_pendingAnalysis.reset();
+    setLosingMove(false);
     return true;
 }
 
@@ -375,6 +478,8 @@ void SolitaireGame::applySnapshot(const QVariant& snapshot)
         return;
     stopAutoFinish();
     clearHint();
+    setLosingMove(false);
+    m_pendingAnalysis.reset();
     m_table = *table;
     m_moves = parts.at(1).toInt();
 }

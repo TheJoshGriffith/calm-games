@@ -157,18 +157,16 @@ std::optional<Move> Klondike::bestMove(PileRef from, int start) const
             return up;
     }
 
-    std::optional<Move> toEmpty;
     for (int column = 0; column < TableauCount; ++column) {
         Move candidate { from, start, { PileKind::Tableau, column } };
         if (!canMove(candidate))
             continue;
-        if (!m_tableau[column].empty())
-            return candidate;
         // A king already at the bottom of its column gains nothing.
-        if (!toEmpty && !(from.kind == PileKind::Tableau && start == 0))
-            toEmpty = candidate;
+        if (m_tableau[column].empty() && from.kind == PileKind::Tableau && start == 0)
+            continue;
+        return candidate;
     }
-    return toEmpty;
+    return std::nullopt;
 }
 
 bool Klondike::isProductive(const Move& move) const
@@ -246,7 +244,7 @@ bool Klondike::canAutoFinish() const
         for (const Card& card : column)
             if (!card.faceUp)
                 return false;
-    return m_drawCount == 1 || (m_stock.empty() && m_waste.size() <= 1);
+    return true;
 }
 
 std::optional<Hint> Klondike::autoFinishStep() const

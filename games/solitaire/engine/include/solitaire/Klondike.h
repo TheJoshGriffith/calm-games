@@ -88,17 +88,17 @@ public:
     bool canMove(const Move& move) const;
     MoveResult move(const Move& move);
 
-    // Where a single tap on the card at `start` of `from` should send it:
-    // its foundation if possible, otherwise the most useful tableau column.
+    // Where a double tap on the card at `start` of `from` should send it:
+    // its foundation if possible, otherwise the leftmost column it fits on.
     std::optional<Move> bestMove(PileRef from, int start) const;
 
     // A helpful next step, or nothing if no move makes progress.
     std::optional<Hint> hint() const;
 
-    // Every card is face up and the stock no longer hides anything, so the
-    // game can be finished by playing to the foundations.
+    // Every tableau card is face up. With draw one the game can then always
+    // be finished; with draw three the stock may still need care.
     bool canAutoFinish() const;
-    // The next foundation move (or draw) for finishing automatically.
+    // The next foundation move (or draw) for finishing a draw-one game.
     std::optional<Hint> autoFinishStep() const;
 
     int foundationCards() const;

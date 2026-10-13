@@ -2,6 +2,7 @@
 
 #include <solitaire/Klondike.h>
 
+#include <atomic>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -14,6 +15,11 @@ enum class Verdict { Winnable, Unwinnable, Unknown };
 // positions. "Unwinnable" means the search ran out of moves within budget;
 // it skips a few rarely useful moves, so treat it as "probably lost".
 Verdict solve(const Klondike& game, int nodeBudget = 150000);
+
+// The same search over every legal move, so "Unwinnable" is a proof: no
+// sequence of moves from `game` wins. Slower; "Unknown" when out of budget
+// or when `stop` becomes true.
+Verdict solveExhaustive(const Klondike& game, int nodeBudget = 400000, const std::atomic_bool* stop = nullptr);
 
 // Every step of a winning line from `game`, if the solver finds one within
 // budget.

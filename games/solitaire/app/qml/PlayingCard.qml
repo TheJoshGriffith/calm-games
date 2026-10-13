@@ -11,6 +11,8 @@ Item {
     property bool red: false
     property bool faceUp: false
     property bool hinted: false
+    // Sideways offset for shaking, separate from x so it isn't animated.
+    property real nudge: 0
 
     readonly property string rankText: ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"][Math.max(0, Math.min(12, rank - 1))]
     readonly property color ink: red ? Theme.danger : Theme.ink
@@ -20,10 +22,13 @@ Item {
     property real turn: faceUp ? 1 : 0
     Behavior on turn { NumberAnimation { duration: Theme.gentle * 0.8; easing.type: Easing.InOutQuad } }
 
-    transform: Scale {
-        origin.x: card.width / 2
-        xScale: Math.max(0.02, Math.abs(1 - 2 * card.turn))
-    }
+    transform: [
+        Scale {
+            origin.x: card.width / 2
+            xScale: Math.max(0.02, Math.abs(1 - 2 * card.turn))
+        },
+        Translate { x: card.nudge }
+    ]
 
     Accessible.role: Accessible.StaticText
     Accessible.name: faceUp ? rankText + " " + [qsTr("of spades"), qsTr("of hearts"), qsTr("of diamonds"), qsTr("of clubs")][suit] : qsTr("Face-down card")

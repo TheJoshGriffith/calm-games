@@ -73,8 +73,10 @@ void playSafeMoves(Klondike& game, std::vector<Hint>* played = nullptr)
 
 class Search {
 public:
-    explicit Search(int budget)
+    Search(int budget, bool exhaustive, const std::atomic_bool* stop = nullptr)
         : m_budget(budget)
+        , m_exhaustive(exhaustive)
+        , m_stop(stop)
     {
     }
 
@@ -114,7 +116,7 @@ public:
         // The root's own safe moves come first on any winning line.
         const std::vector<Hint> rootMoves = stack.empty() ? std::vector<Hint> {} : stack.front().via;
         while (!stack.empty()) {
-            if (m_nodes >= m_budget)
+            if (m_nodes >= m_budget || (m_stop && m_stop->load(std::memory_order_relaxed)))
                 return Verdict::Unknown;
             Frame& top = stack.back();
             if (top.next >= top.moves.size()) {
@@ -136,7 +138,7 @@ public:
     }
 
 private:
-    static std::vector<Hint> candidates(const Klondike& game)
+    std::vector<Hint> candidates(const Klondike& game) const
     {
         std::vector<Hint> out;
         const Pile& waste = game.waste();
@@ -164,7 +166,7 @@ private:
                 if (!source[start].faceUp)
                     continue;
                 bool useful;
-                if (start == 0) {
+                if (start == 0 || m_exhaustive) {
                     useful = true; // checked against an empty target below
                 } else {
                     const Card& below = source[start - 1];
@@ -206,14 +208,18 @@ private:
         // a home on the tableau.
         for (int s = 0; s < SuitCount; ++s) {
             const Pile& f = game.foundation(s);
-            if (f.size() < 3)
+            if (f.empty() || (f.size() < 3 && !m_exhaustive))
                 continue;
+            bool triedEmpty = false;
             for (int t = 0; t < TableauCount; ++t) {
-                if (game.tableau(t).empty())
+                const bool empty = game.tableau(t).empty();
+                if (empty && (triedEmpty || !m_exhaustive))
                     continue;
                 Move m { { PileKind::Foundation, s }, int(f.size()) - 1, { PileKind::Tableau, t } };
-                if (game.canMove(m))
+                if (game.canMove(m)) {
                     out.push_back({ false, m });
+                    triedEmpty = triedEmpty || empty;
+                }
             }
         }
 
@@ -228,6 +234,8 @@ public:
 
 private:
     int m_budget;
+    bool m_exhaustive;
+    const std::atomic_bool* m_stop;
     int m_nodes = 0;
     std::unordered_set<std::uint64_t> m_seen;
 };
@@ -236,12 +244,17 @@ private:
 
 Verdict solve(const Klondike& game, int nodeBudget)
 {
-    return Search(nodeBudget).run(game);
+    return Search(nodeBudget, false).run(game);
+}
+
+Verdict solveExhaustive(const Klondike& game, int nodeBudget, const std::atomic_bool* stop)
+{
+    return Search(nodeBudget, true, stop).run(game);
 }
 
 std::optional<std::vector<Hint>> solvePath(const Klondike& game, int nodeBudget)
 {
-    Search search(nodeBudget);
+    Search search(nodeBudget, false);
     if (search.run(game) != Verdict::Winnable)
         return std::nullopt;
     return search.path;

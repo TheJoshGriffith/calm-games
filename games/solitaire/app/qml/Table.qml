@@ -3,8 +3,9 @@ import Calm
 import Solitaire
 
 // The Klondike table: stock, waste and foundations along the top, seven
-// columns below. Cards glide between places; tap a card to send it to its
-// best spot, or drag it (and the cards on it) where you want it.
+// columns below. Cards glide between places. Double-tap a card to send it
+// home or to the leftmost column it fits on (it shakes if it fits nowhere),
+// or drag it (and the cards on it) where you want it.
 Item {
     id: table
 
@@ -20,6 +21,10 @@ Item {
     property var dragGroup: []
     property bool dragging: false
     property point dragOffset: Qt.point(0, 0)
+
+    // Cards shaking after a double tap that found nowhere to go.
+    property var shakeGroup: []
+    property real shakeOffset: 0
 
     readonly property var placement: layout(game.cards, width, height)
 
@@ -92,7 +97,8 @@ Item {
         return [SolitaireGame.Tableau, column]
     }
 
-    function beginDrag(id) {
+    // The card and every card lying on it.
+    function groupOf(id) {
         const cards = game.cards
         const me = cards[id]
         const group = []
@@ -101,9 +107,31 @@ Item {
             if (c.pile === me.pile && c.slot === me.slot && c.pos >= me.pos)
                 group.push(i)
         }
+        return group
+    }
+
+    function beginDrag(id) {
         dragOffset = Qt.point(0, 0)
-        dragGroup = group
+        dragGroup = groupOf(id)
         dragging = true
+    }
+
+    function quickMove(id) {
+        if (game.quickMove(id))
+            return
+        shakeGroup = groupOf(id)
+        shake.restart()
+    }
+
+    SequentialAnimation {
+        id: shake
+        // A small shake reads as "no" even with reduced motion.
+        NumberAnimation { target: table; property: "shakeOffset"; to: -7; duration: 45 }
+        NumberAnimation { target: table; property: "shakeOffset"; to: 7; duration: 70 }
+        NumberAnimation { target: table; property: "shakeOffset"; to: -5; duration: 60 }
+        NumberAnimation { target: table; property: "shakeOffset"; to: 4; duration: 55 }
+        NumberAnimation { target: table; property: "shakeOffset"; to: 0; duration: 45 }
+        ScriptAction { script: table.shakeGroup = [] }
     }
 
     function endDrag(id, drop) {
@@ -210,6 +238,7 @@ Item {
             red: info.red === true
             faceUp: info.faceUp === true
             hinted: table.hintCards.indexOf(index) >= 0
+            nudge: table.shakeGroup.indexOf(index) >= 0 ? table.shakeOffset : 0
 
             Behavior on x {
                 enabled: !(table.dragging && card.held)
@@ -246,10 +275,9 @@ Item {
                 onReleased: {
                     if (moved)
                         table.endDrag(card.index, true)
-                    else if (table.game.tapToMove)
-                        table.game.tapCard(card.index)
                     moved = false
                 }
+                onDoubleClicked: table.quickMove(card.index)
                 onCanceled: {
                     if (moved)
                         table.endDrag(card.index, false)

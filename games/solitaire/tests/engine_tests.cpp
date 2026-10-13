@@ -150,6 +150,17 @@ void foundationsAndBestMove()
     const Klondike stuck = position(
         "1|*|AH|AS||||2S|||||Ad|Ac");
     CHECK(!stuck.canMove({ Waste, 0, home(Suit::Spades) }));
+
+    // Otherwise the leftmost column it fits on, empty or not.
+    const Klondike columns = position("1|*|6H|||||KD|8S|7S||Kc|KH|7C");
+    best = columns.bestMove(Waste, 0);
+    CHECK(best && best->to == col(2));
+    best = position("1|*|KH|||||8S||7S|||Kc|").bestMove(Waste, 0);
+    CHECK(best && best->to == col(1)); // the leftmost empty column
+    // A king alone in its column stays put, and some cards fit nowhere.
+    CHECK(!columns.bestMove(col(0), 0));
+    CHECK(!columns.bestMove(col(5), 0));
+    CHECK(!columns.bestMove(col(1), 0));
 }
 
 void hintsAndAutoFinish()
@@ -179,6 +190,20 @@ void solverAndDeals()
     const Klondike nearly = position(
         "1|||AS2S3S4S5S6S7S8S9STSJSQS|AH2H3H4H5H6H7H8H9HTHJHQHKH|AD2D3D4D5D6D7D8D9DTDJDQDKD|AC2C3C4C5C6C7C8C9CTCJCQCKC|KS||||||");
     CHECK(solve(nearly) == Verdict::Winnable);
+    CHECK(solveExhaustive(nearly) == Verdict::Winnable);
+
+    // Winning needs the king of hearts brought back down to an empty column
+    // to hold the queen of spades. The quick search skips that move; the
+    // exhaustive one finds it.
+    const Klondike comeback = position(
+        "1|||AS2S3S4S5S6S7S8S9STS|AH2H3H4H5H6H7H8H9HTHJHQHKH|AD2D3D4D5D6D7D8D9DTDJDQDKD|AC2C3C4C5C6C7C8C9CTCJCQCKC|JsQS|KS|||||");
+    CHECK(solve(comeback) == Verdict::Unwinnable);
+    CHECK(solveExhaustive(comeback) == Verdict::Winnable);
+
+    // Found by random play: no sequence of moves wins from here.
+    const Klondike dead = position(
+        "1|6dTh6cQcJc|4CJHKS5H7C4D9D4S|AS2S|||AC2C|KCQDJSTD9S8D7S6H5C4H3S||6sQs9H8C|2dTc2hJD|KhAd9C8H|3d3c7hKd3H|Ts5sAh5dQh7d8S");
+    CHECK(solveExhaustive(dead) == Verdict::Unwinnable);
 
     // Proven deals really are winnable, and most random draw-one deals are.
     using Clock = std::chrono::steady_clock;
