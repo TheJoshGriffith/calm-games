@@ -23,8 +23,9 @@ export default async function sudokuChecks(t) {
         t.fail('sudoku-web-game: no sound started after tapping digits');
       await page.screenshot({ path: join(t.shotDir, 'sudoku-web-game-after-taps.png') });
 
-      // The moves were autosaved; reopening the site should offer to resume.
-      await page.waitForTimeout(1000);
+      // The moves were autosaved; once the page has written them to
+      // IndexedDB (it checks every second), reopening should offer to resume.
+      await t.waitFor(page, log, () => page.evaluate(() => !window.calm.unsaved()), 15000, 'saving to IndexedDB');
       const files = () => page.evaluate(() => ({
         storage: window.calm.storage,
         events: window.calm.events,

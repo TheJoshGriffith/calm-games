@@ -23,8 +23,10 @@ Its "Find web games" job lists every `games/<name>/app/CMakeLists.txt` with a
    WebAssembly (`wasm_singlethread`, with Qt Multimedia), plus Emscripten
    3.1.56, the version Qt 6.8 is built against. Both are cached and shared by
    every game's job.
-2. Configures with `qt-cmake` (tests and tools off, `ENV` exported so the page
-   can pass environment variables) and builds the game's target.
+2. Configures only that game with `qt-cmake` (`-DCALM_GAMES=<name>`, tests and
+   tools off; `ENV`, `FS` and the run-dependency functions exported and
+   `-lidbfs.js` linked so the page can pass environment variables and keep the
+   home directory in IndexedDB) and builds the game's target.
 3. `tools/web/make-site.py` assembles `site/`:
    - `<Target>.wasm`, `<Target>.js` and `qtloader.js`;
    - `tools/web/index.html` in place of Qt's generated page: a calm loading
@@ -92,7 +94,9 @@ After its first deploy to main, add its custom domain (step 5 below).
 source ~/emsdk/emsdk_env.sh
 ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake -S . -B build-wasm -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DQT_HOST_PATH=$HOME/Qt/6.8.3/gcc_64 \
-    -DQT_WASM_EXTRA_EXPORTED_METHODS=ENV -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF
+    -DQT_WASM_EXTRA_EXPORTED_METHODS="ENV,FS,addRunDependency,removeRunDependency" \
+    -DCMAKE_EXE_LINKER_FLAGS="-lidbfs.js" \
+    -DCALM_GAMES=sudoku -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF
 cmake --build build-wasm --target CalmSudoku
 python3 tools/web/make-site.py --build-dir build-wasm --game sudoku --out site
 python3 -m http.server -d site 8000      # then open http://localhost:8000
