@@ -57,6 +57,7 @@ T.ApplicationWindow {
     Binding { target: SoundBank; property: "enabled"; value: Settings.soundEnabled }
     Binding { target: SoundBank; property: "volume"; value: Settings.volume }
     Binding { target: Haptics; property: "enabled"; value: Settings.hapticsEnabled }
+    Binding { target: Haptics; property: "strength"; value: Settings.hapticsStrength }
 
     Connections {
         target: window.session

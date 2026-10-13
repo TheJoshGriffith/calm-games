@@ -14,22 +14,34 @@ void configureAudioSession()
     [session setActive:YES error:nil];
 }
 
-void haptic(const QString& event)
+void haptic(const QString& event, qreal scale)
 {
-    static UIImpactFeedbackGenerator* light = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    // The "soft" impact style has a rounded, cushioned feel that suits a calm
+    // game better than the sharper light/rigid styles.
+    static UIImpactFeedbackGenerator* soft = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleSoft];
     static UIImpactFeedbackGenerator* medium = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
-    static UINotificationFeedbackGenerator* notify = [[UINotificationFeedbackGenerator alloc] init];
 
-    if (event == QLatin1String("tap") || event == QLatin1String("erase"))
-        [light impactOccurredWithIntensity:0.7];
+    auto pulse = [](UIImpactFeedbackGenerator* generator, qreal intensity) {
+        [generator impactOccurredWithIntensity:qBound(0.05, intensity, 1.0)];
+    };
+
+    if (event == QLatin1String("tap"))
+        pulse(soft, 0.7 * scale);
     else if (event == QLatin1String("soft"))
-        [light impactOccurredWithIntensity:0.4];
+        pulse(soft, 0.4 * scale);
+    else if (event == QLatin1String("erase"))
+        pulse(soft, 0.5 * scale);
     else if (event == QLatin1String("error"))
-        [light impactOccurredWithIntensity:1.0];
+        pulse(soft, 0.9 * scale);
     else if (event == QLatin1String("complete"))
-        [medium impactOccurredWithIntensity:0.8];
-    else if (event == QLatin1String("win"))
-        [notify notificationOccurred:UINotificationFeedbackTypeSuccess];
+        pulse(medium, 0.6 * scale);
+    else if (event == QLatin1String("win")) {
+        // A slow, settling double beat rather than a buzz.
+        pulse(medium, 0.8 * scale);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 180 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            pulse(soft, 0.5 * scale);
+        });
+    }
 }
 
 } // namespace calm::platform

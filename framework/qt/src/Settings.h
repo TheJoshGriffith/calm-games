@@ -16,6 +16,8 @@ class Settings : public QObject {
     Q_PROPERTY(bool soundEnabled READ soundEnabled WRITE setSoundEnabled NOTIFY soundEnabledChanged)
     Q_PROPERTY(qreal volume READ volume WRITE setVolume NOTIFY volumeChanged)
     Q_PROPERTY(bool hapticsEnabled READ hapticsEnabled WRITE setHapticsEnabled NOTIFY hapticsEnabledChanged)
+    // 0 subtle, 1 gentle, 2 firm
+    Q_PROPERTY(int hapticsStrength READ hapticsStrength WRITE setHapticsStrength NOTIFY hapticsStrengthChanged)
     Q_PROPERTY(bool reduceMotion READ reduceMotion WRITE setReduceMotion NOTIFY reduceMotionChanged)
 
 public:
@@ -29,6 +31,8 @@ public:
     void setVolume(qreal volume);
     bool hapticsEnabled() const;
     void setHapticsEnabled(bool enabled);
+    int hapticsStrength() const;
+    void setHapticsStrength(int strength);
     bool reduceMotion() const;
     void setReduceMotion(bool reduce);
 
@@ -37,6 +41,7 @@ signals:
     void soundEnabledChanged();
     void volumeChanged();
     void hapticsEnabledChanged();
+    void hapticsStrengthChanged();
     void reduceMotionChanged();
 
 private:

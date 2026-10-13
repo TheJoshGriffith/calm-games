@@ -7,6 +7,7 @@ const QString kTheme = QStringLiteral("app/theme");
 const QString kSound = QStringLiteral("app/soundEnabled");
 const QString kVolume = QStringLiteral("app/volume");
 const QString kHaptics = QStringLiteral("app/hapticsEnabled");
+const QString kHapticsStrength = QStringLiteral("app/hapticsStrength");
 const QString kReduceMotion = QStringLiteral("app/reduceMotion");
 } // namespace
 
@@ -68,6 +69,20 @@ void Settings::setHapticsEnabled(bool enabled)
         return;
     m_store.setValue(kHaptics, enabled);
     emit hapticsEnabledChanged();
+}
+
+int Settings::hapticsStrength() const
+{
+    return std::clamp(m_store.value(kHapticsStrength, 1).toInt(), 0, 2);
+}
+
+void Settings::setHapticsStrength(int strength)
+{
+    strength = std::clamp(strength, 0, 2);
+    if (strength == hapticsStrength())
+        return;
+    m_store.setValue(kHapticsStrength, strength);
+    emit hapticsStrengthChanged();
 }
 
 bool Settings::reduceMotion() const

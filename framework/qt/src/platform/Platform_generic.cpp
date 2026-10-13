@@ -6,7 +6,7 @@ void configureAudioSession()
 {
 }
 
-void haptic(const QString&)
+void haptic(const QString&, qreal)
 {
 }
 
