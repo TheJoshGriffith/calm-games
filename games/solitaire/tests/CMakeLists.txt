@@ -1,0 +1,11 @@
+add_executable(solitaire_engine_tests engine_tests.cpp)
+target_link_libraries(solitaire_engine_tests PRIVATE Solitaire::Engine)
+add_test(NAME solitaire_engine_tests COMMAND solitaire_engine_tests)
+
+if(CALM_BUILD_APPS)
+    add_executable(solitaire_game_tests solitaire_game_tests.cpp ../app/SolitaireGame.h ../app/SolitaireGame.cpp)
+    target_include_directories(solitaire_game_tests PRIVATE ../app)
+    target_link_libraries(solitaire_game_tests PRIVATE Solitaire::Engine calm_framework Qt6::Concurrent Qt6::Test)
+    add_test(NAME solitaire_game_tests COMMAND solitaire_game_tests)
+    set_tests_properties(solitaire_game_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
