@@ -1,0 +1,131 @@
+name: Web size probe
+
+# TEMPORARY (branch web-size): measures what each game's .wasm is made of and
+# how much candidate changes save. Removed before merging.
+on:
+  push:
+    branches: [web-size]
+  workflow_dispatch:
+
+concurrency:
+  group: web-size-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: Probe ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: sudoku, target: CalmSudoku, branch: '' }
+          - { name: minesweeper, target: CalmMinesweeper, branch: minesweeper }
+          - { name: pinball, target: CalmPinball, branch: pinball }
+          - { name: solitaire, target: CalmSolitaire, branch: solitaire }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bring in the game from its branch
+        if: matrix.branch != ''
+        run: git checkout origin/${{ matrix.branch }} -- games/${{ matrix.name }}
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+      - run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: all_os
+          target: wasm
+          arch: wasm_singlethread
+          modules: 'qtmultimedia'
+          cache: true
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '3.1.56'
+          actions-cache-folder: emsdk-cache
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build brotli wabt
+
+      - name: Configure and build (baseline, with link map)
+        run: |
+          chmod +x "$QT_ROOT_DIR"/bin/*
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build-wasm -G Ninja \
+            -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DQT_WASM_EXTRA_EXPORTED_METHODS="ENV,FS,addRunDependency,removeRunDependency" \
+            -DCMAKE_EXE_LINKER_FLAGS="-lidbfs.js -Wl,--Map=$PWD/link.map" \
+            -DCALM_GAMES=${{ matrix.name }} -DCALM_BUILD_APPS=ON -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF > configure.log
+          cmake --build build-wasm --target ${{ matrix.target }} --parallel > build.log || { tail -50 build.log; exit 1; }
+          cp build-wasm/games/${{ matrix.name }}/app/${{ matrix.target }}.wasm base.wasm
+          cp build-wasm/games/${{ matrix.name }}/app/${{ matrix.target }}.js base.js
+
+      - name: Report
+        run: |
+          app=build-wasm/games/${{ matrix.name }}/app
+          sz() { printf "%s raw %d gz %d br %d\n" "$1" $(stat -c %s "$1") $(gzip -9 -c "$1" | wc -c) $(brotli -c -q 11 "$1" | wc -c); }
+          {
+            echo "### ${{ matrix.name }}"
+            echo '```'
+            sz base.wasm; sz base.js; sz $app/qtloader.js
+            echo '```'
+            python3 tools/web/wasm-size-report.py base.wasm --map link.map --top 40 --title "${{ matrix.target }}.wasm"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "== link command"; ninja -C build-wasm -t commands ${{ matrix.target }} | tail -n 1 | tr ' ' '\n' | grep -v '^$' | grep -v '\.a$'
+          echo "== linked archives"; ninja -C build-wasm -t commands ${{ matrix.target }} | tail -n 1 | tr ' ' '\n' | grep -E '\.(a|o)$' | sed "s|$QT_ROOT_DIR|QT|"
+          echo "== plugin import sources"; find build-wasm -name '*plugin_import*.cpp' -o -name '*qml_plugin_imports*' | while read f; do echo "-- $f"; cat "$f"; done
+          echo "== Qt wasm fonts"; find "$QT_ROOT_DIR" -iname '*.ttf' -o -iname '*.otf' | xargs -r ls -l
+          echo "== Qt resource objects"; find "$QT_ROOT_DIR" -path '*/.rcc/*' -name '*.o' | xargs -r ls -l | sort -k5 -n | tail -40
+          echo "== wasm-objdump"; wasm-objdump -h base.wasm
+          echo "== data segments"; wasm-objdump -x -j Data base.wasm | head -20
+          echo "== wasm features"; wasm-objdump -x -j Import base.wasm | head -5
+
+      - name: Linker experiments (relink only)
+        run: |
+          app=build-wasm/games/${{ matrix.name }}/app
+          sz() { printf "| %s | %d | %d | %d |\n" "$1" $(stat -c %s "$2") $(gzip -9 -c "$2" | wc -c) $(brotli -c -q 11 "$2" | wc -c); }
+          {
+            echo "#### ${{ matrix.name }}: link variants (wasm raw / gz / br)"
+            echo "| Variant | Raw | gzip -9 | brotli |"
+            echo "| --- | ---: | ---: | ---: |"
+            sz baseline base.wasm
+            sz "baseline js" base.js
+          } >> "$GITHUB_STEP_SUMMARY"
+          wasm-opt --version || true
+          WOPT=$(dirname $(which emcc))/../bin/wasm-opt; [ -x "$WOPT" ] || WOPT=$(find "$EMSDK" -name wasm-opt -type f | head -1)
+          echo "wasm-opt: $WOPT"
+          $WOPT --enable-bulk-memory --enable-mutable-globals --enable-sign-ext --enable-nontrapping-float-to-int --enable-exceptions -Oz base.wasm -o oz.wasm && sz "wasm-opt -Oz on output" oz.wasm >> "$GITHUB_STEP_SUMMARY" || true
+          $WOPT --detect-features -Oz --converge base.wasm -o ozc.wasm && sz "wasm-opt -Oz --converge (detect features)" ozc.wasm >> "$GITHUB_STEP_SUMMARY" || true
+          relink() {
+            label="$1"; shift
+            cmake -B build-wasm -DCMAKE_EXE_LINKER_FLAGS="-lidbfs.js $*" > /dev/null
+            if cmake --build build-wasm --target ${{ matrix.target }} > relink.log 2>&1; then
+              cp $app/${{ matrix.target }}.wasm "v-$label.wasm"; cp $app/${{ matrix.target }}.js "v-$label.js"
+              sz "$label" "v-$label.wasm" >> "$GITHUB_STEP_SUMMARY"
+              sz "$label js" "v-$label.js" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| $label | failed | | |" >> "$GITHUB_STEP_SUMMARY"; tail -20 relink.log
+            fi
+          }
+          relink none
+          relink Oz -Oz
+          relink closure --closure=1
+          relink Oz-noassert -Oz -sASSERTIONS=0
+          relink no-exc-catch -sDISABLE_EXCEPTION_CATCHING=1
+          relink converge -Oz "-sBINARYEN_EXTRA_PASSES=--converge"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe-${{ matrix.name }}
+          path: |
+            link.map
+            base.wasm
+            base.js
+          compression-level: 9
