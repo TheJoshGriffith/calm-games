@@ -81,6 +81,11 @@ void MinesweeperGame::tap(int cell)
 
 void MinesweeperGame::open(int cell)
 {
+    openCell(cell, false);
+}
+
+void MinesweeperGame::openCell(int cell, bool hinted)
+{
     if (!playable(cell))
         return;
     const Cell state = m_field.state(cell);
@@ -91,6 +96,8 @@ void MinesweeperGame::open(int cell)
         return;
 
     beginMove();
+    if (hinted)
+        noteHintUsed();
     const QVariantMap before = snapshotOf();
     if (!m_field.minesPlaced()) {
         calm::Rng rng(m_seed);
@@ -130,9 +137,16 @@ void MinesweeperGame::afterReveal(const minesweeper::RevealResult& result, const
 
 void MinesweeperGame::flag(int cell)
 {
+    flagCell(cell, false);
+}
+
+void MinesweeperGame::flagCell(int cell, bool hinted)
+{
     if (!playable(cell) || m_field.state(cell) == Cell::Revealed)
         return;
     beginMove();
+    if (hinted)
+        noteHintUsed();
     m_field.toggleFlag(cell);
     emitFeedback(m_field.state(cell) == Cell::Flagged ? QStringLiteral("soft") : QStringLiteral("erase"));
     endMove();
@@ -143,23 +157,23 @@ bool MinesweeperGame::hint()
     if (!active() || complete() || loading() || lost())
         return false;
     if (!m_field.minesPlaced()) {
-        open((m_field.rows() / 2) * m_field.cols() + m_field.cols() / 2);
+        openCell((m_field.rows() / 2) * m_field.cols() + m_field.cols() / 2, true);
         return true;
     }
     // A wrong flag would mislead every deduction, so clear it first.
     for (int i = 0; i < m_field.cellCount(); ++i) {
         if (m_field.state(i) == Cell::Flagged && !m_field.isMine(i)) {
-            flag(i);
+            flagCell(i, true);
             return true;
         }
     }
     const minesweeper::Deductions found = minesweeper::deduce(m_field);
     if (!found.safe.empty()) {
-        open(found.safe.front());
+        openCell(found.safe.front(), true);
         return true;
     }
     if (!found.mines.empty()) {
-        flag(found.mines.front());
+        flagCell(found.mines.front(), true);
         return true;
     }
     emitFeedback(QStringLiteral("error"));

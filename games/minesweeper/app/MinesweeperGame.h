@@ -77,6 +77,9 @@ protected:
 
 private:
     bool playable(int cell) const;
+    // A hinted move also counts towards hintsUsed.
+    void openCell(int cell, bool hinted);
+    void flagCell(int cell, bool hinted);
     void afterReveal(const minesweeper::RevealResult& result, const QVariantMap& before);
     QVariantMap snapshotOf() const;
 

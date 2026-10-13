@@ -95,8 +95,10 @@ private slots:
         MinesweeperGame game;
         game.startNewGame(QStringLiteral("Hard"));
         QSignalSpy won(&game, &MinesweeperGame::won);
+        QCOMPARE(game.hintsUsed(), 0);
         solveWithHints(game);
         QCOMPARE(won.count(), 1);
+        QVERIFY(game.hintsUsed() > 0);
         QCOMPARE(game.minesLeft(), 0);
         QVERIFY(!game.hasSavedGame());
     }
