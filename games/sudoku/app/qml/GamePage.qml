@@ -65,19 +65,43 @@ CalmPage {
         }
     }
 
-    Column {
-        width: parent.width
-        spacing: 16
+    // Phones stack the board over the controls. A window wider than it is
+    // tall (a desktop browser, an iPad on its side) puts the controls beside
+    // the board instead, and the board never grows past the space it has.
+    Item {
+        id: area
+        anchors.fill: parent
         opacity: page.game.loading ? 0.3 : 1
         Behavior on opacity { NumberAnimation { duration: Theme.gentle } }
 
+        readonly property int gap: 16
+        readonly property int minControls: 300
+        readonly property bool sideBySide: width >= height + gap + minControls
+        readonly property real boardSize: sideBySide
+            ? Math.min(height, width - gap - minControls)
+            : Math.min(width, Math.max(240, height - gap - controlsArea.height))
+        readonly property real controlsWidth: sideBySide
+            ? Math.min(420, width - boardSize - gap)
+            : Math.min(width, Math.max(boardSize, minControls))
+        // The board and controls as one centred group.
+        readonly property real groupWidth: sideBySide ? boardSize + gap + controlsWidth
+                                                      : Math.max(boardSize, controlsWidth)
+
         Board {
-            width: parent.width
+            x: (area.width - area.groupWidth) / 2
+               + (area.sideBySide ? 0 : (area.groupWidth - width) / 2)
+            y: area.sideBySide ? (area.height - height) / 2 : 0
+            width: area.boardSize
+            height: area.boardSize
             game: page.game
         }
 
         Item {
-            width: parent.width
+            id: controlsArea
+            x: area.sideBySide ? (area.width - area.groupWidth) / 2 + area.boardSize + area.gap
+                               : (area.width - width) / 2
+            y: area.sideBySide ? (area.height - height) / 2 : area.boardSize + area.gap
+            width: area.controlsWidth
             height: controls.height
 
             // Gaps between controls belong to the controls: a near miss on
