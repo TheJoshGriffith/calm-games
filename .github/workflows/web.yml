@@ -100,8 +100,7 @@ jobs:
       - name: TEMP diagnostics
         if: always()
         run: |
-          sed -n 60,260p site/qtloader.js
-          if [ -f screens/sudoku-web.png ]; then echo "BEGIN-PNG"; base64 -w 200 screens/sudoku-web.png; echo "END-PNG"; fi
+          if [ -f screens/sudoku-web.png ]; then echo "BEGIN-JPG"; convert screens/sudoku-web.png -resize 50% -quality 80 jpg:- | base64 -w 0; echo; echo "END-JPG"; fi
 
       - name: Upload site
         if: always()

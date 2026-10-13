@@ -77,47 +77,62 @@ async function waitFor(page, log, predicate, timeoutMs, what) {
   throw new Error(`${what}: timed out after ${timeoutMs} ms\n${log.slice(-20).join('\n')}`);
 }
 
-try {
-  // 1. The app's QML smoke test: exits 1 on any QML warning.
-  {
-    const { page, log } = await open('smoke', '/?smoke=1', { width: 430, height: 932 });
-    await waitFor(page, log, () => log.some(l => l.includes('smoke test:')), 120000, 'QML smoke test');
-    const ok = log.some(l => l.includes('smoke test: ok'));
-    if (!ok) failures.push('QML smoke test reported warnings:\n' + log.join('\n'));
-    await page.close();
+async function step(name, body) {
+  try {
+    await body();
+  } catch (err) {
+    failures.push(`${name}: ${err.message}`);
   }
-
-  // 2. Home screen, phone and desktop sizes.
-  for (const [name, viewport] of [['sudoku-web', { width: 430, height: 932 }],
-                                  ['sudoku-web-desktop', { width: 1280, height: 800 }]]) {
-    const { page, log } = await open(name, '/', viewport);
-    await waitFor(page, log, s => s === 'running', 120000, `${name} start`);
-    await page.waitForTimeout(4000); // first frames and the splash fade
-    const state = await page.evaluate(() => window.calm.state);
-    if (state !== 'running') failures.push(`${name}: app state is ${state} after start`);
-    const canvases = await page.evaluate(() => {
-      const count = root => root.querySelectorAll('canvas').length
-        + [...root.querySelectorAll('*')].reduce((n, e) => n + (e.shadowRoot ? count(e.shadowRoot) : 0), 0);
-      return count(document);
-    });
-    if (canvases < 1) failures.push(`${name}: no Qt canvas on the page`);
-    await page.screenshot({ path: join(shotDir, `${name}.png`) });
-    console.log(`saved ${join(shotDir, `${name}.png`)} (${canvases} canvas)`);
-    await page.close();
-  }
-
-  // 3. A share link loads the same app and hands it the payload.
-  {
-    const { page, log } = await open('share', '/s/smoke-payload', { width: 430, height: 932 });
-    await waitFor(page, log, () => log.some(l => l.includes('share link: smoke-payload')), 120000, 'share link');
-    await page.close();
-  }
-} catch (err) {
-  failures.push(err.message);
-} finally {
-  await browser.close();
-  server.close();
 }
+
+// 1. The app's QML smoke test: exits 1 on any QML warning.
+await step('QML smoke test', async () => {
+  const { page, log } = await open('smoke', '/?smoke=1', { width: 430, height: 932 });
+  try {
+    await waitFor(page, log, () => log.some(l => l.includes('smoke test:')), 120000, 'QML smoke test');
+    if (!log.some(l => l.includes('smoke test: ok')))
+      failures.push('QML smoke test reported warnings:\n' + log.join('\n'));
+  } finally {
+    await page.close();
+  }
+});
+
+// 2. Home screen, phone and desktop sizes.
+for (const [name, viewport] of [['sudoku-web', { width: 430, height: 932 }],
+                                ['sudoku-web-desktop', { width: 1280, height: 800 }]]) {
+  await step(name, async () => {
+    const { page, log } = await open(name, '/', viewport);
+    try {
+      await waitFor(page, log, s => s === 'running', 120000, `${name} start`);
+      await page.waitForTimeout(4000); // first frames and the splash fade
+      const state = await page.evaluate(() => window.calm.state);
+      if (state !== 'running') failures.push(`${name}: app state is ${state} after start`);
+      const canvases = await page.evaluate(() => {
+        const count = root => root.querySelectorAll('canvas').length
+          + [...root.querySelectorAll('*')].reduce((n, e) => n + (e.shadowRoot ? count(e.shadowRoot) : 0), 0);
+        return count(document);
+      });
+      if (canvases < 1) failures.push(`${name}: no Qt canvas on the page`);
+      await page.screenshot({ path: join(shotDir, `${name}.png`) });
+      console.log(`saved ${join(shotDir, `${name}.png`)} (${canvases} canvas)`);
+    } finally {
+      await page.close();
+    }
+  });
+}
+
+// 3. A share link loads the same app and hands it the payload.
+await step('share link', async () => {
+  const { page, log } = await open('share', '/s/smoke-payload', { width: 430, height: 932 });
+  try {
+    await waitFor(page, log, () => log.some(l => l.includes('share link: smoke-payload')), 120000, 'share link');
+  } finally {
+    await page.close();
+  }
+});
+
+await browser.close();
+server.close();
 
 if (failures.length) {
   console.error('\nweb smoke test FAILED:\n- ' + failures.join('\n- '));
