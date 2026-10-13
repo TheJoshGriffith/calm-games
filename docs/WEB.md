@@ -93,7 +93,7 @@ After its first deploy to main, add its custom domain (step 5 below).
 # Qt 6.8.3 for Linux and for WebAssembly (wasm_singlethread), Emscripten 3.1.56
 source ~/emsdk/emsdk_env.sh
 ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake -S . -B build-wasm -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release -DQT_HOST_PATH=$HOME/Qt/6.8.3/gcc_64 \
+    -DCMAKE_BUILD_TYPE=MinSizeRel -DQT_HOST_PATH=$HOME/Qt/6.8.3/gcc_64 \
     -DQT_WASM_EXTRA_EXPORTED_METHODS="ENV,FS,addRunDependency,removeRunDependency" \
     -DCMAKE_EXE_LINKER_FLAGS="-lidbfs.js" \
     -DCALM_GAMES=sudoku -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF
