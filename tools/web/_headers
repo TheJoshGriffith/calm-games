@@ -1,0 +1,31 @@
+# Cloudflare Pages response headers for the Gwynant Sudoku web app.
+# index.html is always revalidated, so a deploy is picked up at once. It loads
+# the engine files as name?v=<commit>, so each deploy gets fresh URLs and the
+# engine files themselves can be cached for a year.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache
+
+/s/*
+  Cache-Control: no-cache
+
+/*.wasm
+  Content-Type: application/wasm
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.js
+  Content-Type: text/javascript; charset=utf-8
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.png
+  Cache-Control: public, max-age=604800
+
+/favicon.ico
+  Cache-Control: public, max-age=604800

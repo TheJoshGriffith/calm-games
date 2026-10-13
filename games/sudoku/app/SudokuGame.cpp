@@ -5,7 +5,10 @@
 
 #include <QRandomGenerator>
 #include <QSet>
+
+#if CALM_SUDOKU_THREADED_GENERATION
 #include <QtConcurrent/QtConcurrentRun>
+#endif
 
 #include <algorithm>
 
@@ -56,6 +59,11 @@ constexpr int kSnapshotSize = 81 + 162 + 162 + 81 + 1;
 SudokuGame::SudokuGame(QObject* parent)
     : GameSession(parent)
 {
+#if !CALM_SUDOKU_THREADED_GENERATION
+    m_generationTimer = new QTimer(this);
+    m_generationTimer->setSingleShot(true);
+    connect(m_generationTimer, &QTimer::timeout, this, &SudokuGame::generateNext);
+#endif
     // Warm the buffers so the first game of any level starts instantly.
     for (int d = 0; d < sudoku::DifficultyCount; ++d)
         requestPuzzle(static_cast<Difficulty>(d));
@@ -63,10 +71,12 @@ SudokuGame::SudokuGame(QObject* parent)
 
 SudokuGame::~SudokuGame()
 {
+#if CALM_SUDOKU_THREADED_GENERATION
     for (auto* watcher : std::as_const(m_watchers)) {
         watcher->disconnect(this);
         watcher->waitForFinished();
     }
+#endif
 }
 
 QVariantList SudokuGame::cells() const
@@ -479,6 +489,9 @@ void SudokuGame::createGame(const QString& level)
     m_waitingFor = difficulty;
     if (m_inFlight.value(int(difficulty)) == 0)
         requestPuzzle(difficulty);
+#if !CALM_SUDOKU_THREADED_GENERATION
+    scheduleGeneration();
+#endif
 }
 
 void SudokuGame::requestPuzzle(Difficulty difficulty)
@@ -489,6 +502,7 @@ void SudokuGame::requestPuzzle(Difficulty difficulty)
     ++m_inFlight[key];
 
     const quint64 seed = QRandomGenerator::global()->generate64();
+#if CALM_SUDOKU_THREADED_GENERATION
     auto* watcher = new QFutureWatcher<std::optional<sudoku::Puzzle>>(this);
     m_watchers.append(watcher);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, difficulty] {
@@ -498,7 +512,45 @@ void SudokuGame::requestPuzzle(Difficulty difficulty)
         onPuzzleReady(difficulty, puzzle);
     });
     watcher->setFuture(QtConcurrent::run([difficulty, seed] { return sudoku::generate(difficulty, seed); }));
+#else
+    m_pending.append({ difficulty, seed });
+    scheduleGeneration();
+#endif
 }
+
+#if !CALM_SUDOKU_THREADED_GENERATION
+void SudokuGame::scheduleGeneration()
+{
+    if (m_pending.isEmpty())
+        return;
+    // Each puzzle takes a few milliseconds up to about half a second, and
+    // blocks the only thread while it runs. Leave time for frames between
+    // them, and let the first screen appear before warming the buffers. A
+    // level the player is waiting for goes next without delay.
+    const int delay = m_waitingFor ? 0 : m_warmedUp ? 50 : 600;
+    if (!m_generationTimer->isActive() || m_generationTimer->remainingTime() > delay)
+        m_generationTimer->start(delay);
+}
+
+void SudokuGame::generateNext()
+{
+    m_warmedUp = true;
+    if (m_pending.isEmpty())
+        return;
+    qsizetype next = 0;
+    if (m_waitingFor) {
+        for (qsizetype i = 0; i < m_pending.size(); ++i) {
+            if (m_pending.at(i).first == *m_waitingFor) {
+                next = i;
+                break;
+            }
+        }
+    }
+    const auto [difficulty, seed] = m_pending.takeAt(next);
+    onPuzzleReady(difficulty, sudoku::generate(difficulty, seed));
+    scheduleGeneration();
+}
+#endif
 
 void SudokuGame::onPuzzleReady(Difficulty difficulty, const std::optional<sudoku::Puzzle>& puzzle)
 {

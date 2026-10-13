@@ -4,12 +4,23 @@
 
 #include <sudoku/Generator.h>
 
-#include <QFutureWatcher>
 #include <QHash>
 #include <QList>
 #include <QQmlEngine>
 #include <QSettings>
+#include <QTimer>
 #include <QVariantList>
+#include <QtGlobal>
+
+// Puzzles are generated on a worker thread where Qt has threads. A single-
+// threaded build (WebAssembly) generates them one at a time on the event
+// loop instead, between frames.
+#if QT_CONFIG(thread)
+#define CALM_SUDOKU_THREADED_GENERATION 1
+#include <QFutureWatcher>
+#else
+#define CALM_SUDOKU_THREADED_GENERATION 0
+#endif
 
 #include <array>
 
@@ -166,6 +177,14 @@ private:
     std::optional<sudoku::Difficulty> m_waitingFor;
     QHash<int, QList<sudoku::Puzzle>> m_buffer;
     QHash<int, int> m_inFlight;
+#if CALM_SUDOKU_THREADED_GENERATION
     QList<QFutureWatcher<std::optional<sudoku::Puzzle>>*> m_watchers;
+#else
+    void generateNext();
+    void scheduleGeneration();
+    QList<std::pair<sudoku::Difficulty, quint64>> m_pending;
+    QTimer* m_generationTimer = nullptr;
+    bool m_warmedUp = false;
+#endif
     mutable QSettings m_settings;
 };

@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <!-- Deep links such as /s/<payload> may serve this same page (see a game's
+       app/web/site/_redirects), so every asset path resolves from the root. -->
+  <base href="/">
+  <title>__TITLE__</title>
+  <meta name="description" content="__TITLE__: calm, free and ad-free, with no accounts or tracking.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#F2F4F3" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151D22" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <style>
+    :root {
+      --ground: #F2F4F3;
+      --ink: #1F2A30;
+      --muted: #5E6E76;
+      --accent: #3D7D78;
+      --track: #D5DCDF;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --ground: #151D22;
+        --ink: #E4EBEE;
+        --muted: #9AABB3;
+        --accent: #86C2BA;
+        --track: #2E3B42;
+      }
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: var(--ground);
+      color: var(--ink);
+      font-family: "Nunito", ui-rounded, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    #screen {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+    }
+    #splash {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 16px;
+      background: var(--ground);
+      transition: opacity 320ms ease;
+      z-index: 1;
+    }
+    #splash.done { opacity: 0; pointer-events: none; }
+    #splash img { width: 72px; height: 72px; border-radius: 18px; }
+    #splash h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: 0.01em; }
+    #splash p { margin: 0; font-size: 15px; color: var(--muted); min-height: 1.4em; text-align: center; }
+    .bar {
+      width: min(220px, 60vw);
+      height: 4px;
+      border-radius: 2px;
+      background: var(--track);
+      overflow: hidden;
+    }
+    .bar span {
+      display: block;
+      height: 100%;
+      width: 0%;
+      border-radius: 2px;
+      background: var(--accent);
+      transition: width 200ms ease;
+    }
+    .bar.indeterminate span {
+      width: 35%;
+      animation: slide 1.4s ease-in-out infinite;
+    }
+    @keyframes slide {
+      from { transform: translateX(-100%); }
+      to { transform: translateX(290%); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .bar.indeterminate span { animation: none; width: 100%; opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+  <div id="screen"></div>
+  <div id="splash" role="status" aria-live="polite">
+    <img src="icon-192.png" alt="">
+    <h1>__TITLE__</h1>
+    <div class="bar" id="bar"><span id="progress"></span></div>
+    <p id="status">Loading</p>
+  </div>
+  <noscript>__TITLE__ needs JavaScript and WebAssembly.</noscript>
+
+  <script src="qtloader.js?v=__BUILD__"></script>
+  <script src="__TARGET__.js?v=__BUILD__"></script>
+  <script>
+    (function () {
+      const splash = document.getElementById('splash');
+      const bar = document.getElementById('bar');
+      const progress = document.getElementById('progress');
+      const status = document.getElementById('status');
+      const screen = document.getElementById('screen');
+
+      function setStatus(text) { status.textContent = text; }
+
+      // Download the .wasm ourselves so the bar can show real progress, then
+      // hand the bytes to Qt as a compiled module.
+      async function fetchWasm(url) {
+        const response = await fetch(url);
+        if (!response.ok)
+          throw new Error('Could not download the game (' + response.status + ')');
+        // Content-Length is the compressed size when the server gzips, so
+        // treat it as a hint and fall back to an indeterminate bar.
+        const total = Number(response.headers.get('Content-Length')) || 0;
+        const encoded = response.headers.get('Content-Encoding');
+        if (!response.body || !total || encoded) {
+          bar.classList.add('indeterminate');
+          return WebAssembly.compile(await response.arrayBuffer());
+        }
+        const reader = response.body.getReader();
+        const bytes = new Uint8Array(total);
+        let received = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (received + value.length > total) {
+            bar.classList.add('indeterminate');
+            const rest = new Uint8Array(await new Response(value).arrayBuffer());
+            const merged = new Uint8Array(received + rest.length);
+            merged.set(bytes.subarray(0, received));
+            merged.set(rest, received);
+            received += rest.length;
+            return WebAssembly.compile(merged);
+          }
+          bytes.set(value, received);
+          received += value.length;
+          progress.style.width = Math.round(100 * received / total) + '%';
+        }
+        bar.classList.add('indeterminate');
+        setStatus('Starting');
+        return WebAssembly.compile(bytes.subarray(0, received));
+      }
+
+      // Share links: https://<domain>/s/<payload> starts the app with
+      // "--share <payload>" (served only where the game's _redirects maps
+      // /s/* to this page).
+      function appArguments() {
+        const args = [];
+        const match = window.location.pathname.match(/^\/s\/([^/?#]+)/);
+        if (match)
+          args.push('--share', decodeURIComponent(match[1]));
+        // Development aid, like the desktop flag: ?play=<Level> opens a game.
+        const play = new URLSearchParams(window.location.search).get('play');
+        if (play)
+          args.push('--play', play);
+        return args;
+      }
+
+      // ?smoke=1 runs the app's own QML smoke test (CI): it exits after a
+      // moment with code 0, or 1 if any QML warning was printed.
+      const params = new URLSearchParams(window.location.search);
+      const environment = {};
+      if (params.has('smoke'))
+        environment.CALM_SMOKE_TEST = '1';
+
+      window.calm = { state: 'loading', exit: null, storage: 'none', events: [] };
+
+      // Saves, settings and statistics are files under the app's home
+      // directory. Keep that directory in IndexedDB (Emscripten's IDBFS): load
+      // it before main() runs, then write it back whenever a file changes
+      // (checked every second) and when the page is hidden or closed.
+      const home = '/home/web_user';
+      function persistentHome(instance) {
+        const FS = instance.FS;
+        const IDBFS = FS && FS.filesystems && FS.filesystems.IDBFS;
+        if (!IDBFS || !instance.addRunDependency) {
+          console.warn('No persistent storage: progress lasts only until the page closes.');
+          return;
+        }
+        try {
+          FS.mkdirTree(home);
+          FS.mount(IDBFS, {}, home);
+        } catch (error) {
+          console.warn('No persistent storage:', error);
+          return;
+        }
+
+        // Every file under home with its size and modification time.
+        const files = (dir = home, out = []) => {
+          for (const name of FS.readdir(dir)) {
+            if (name === '.' || name === '..') continue;
+            const path = dir + '/' + name;
+            const stat = FS.stat(path);
+            if (FS.isDir(stat.mode)) files(path, out);
+            else out.push(path + ' ' + stat.size + ' ' + new Date(stat.mtime).getTime());
+          }
+          return out;
+        };
+        let stored = null;      // the file list IndexedDB last caught up with
+        let syncing = false;
+        let waiting = [];       // callbacks for the next write-back
+        const persist = () => {
+          if (syncing) return;
+          const now = files().join('\n');
+          if (now === stored && !waiting.length) return;
+          syncing = true;
+          const callbacks = waiting;
+          waiting = [];
+          FS.syncfs(false, error => {
+            syncing = false;
+            if (error) console.warn('Could not save progress:', error);
+            else stored = now;
+            callbacks.forEach(callback => callback(error));
+            if (waiting.length) persist();
+          });
+        };
+
+        instance.addRunDependency('calm-home');
+        FS.syncfs(true, error => {
+          if (error) console.warn('Could not load saved progress:', error);
+          window.calm.storage = error ? 'failed' : 'indexeddb';
+          window.calm.events.push('storage loaded');
+          stored = files().join('\n');
+          setInterval(persist, 1000);
+          instance.removeRunDependency('calm-home');
+        });
+        document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
+        window.addEventListener('pagehide', persist);
+
+        // For devtools and tests: list the files, ask whether any change is
+        // not in IndexedDB yet, or write everything back now.
+        window.calm.files = () => files();
+        window.calm.unsaved = () => syncing || stored === null || files().join('\n') !== stored;
+        window.calm.flush = () => new Promise(resolve => { waiting.push(resolve); persist(); });
+      }
+
+      async function start() {
+        try {
+          const module = await fetchWasm('__TARGET__.wasm?v=__BUILD__');
+          await qtLoad({
+            arguments: appArguments(),
+            preRun: [persistentHome],
+            qt: {
+              module: Promise.resolve(module),
+              // Qt 6.8 names the Emscripten factory <target>_entry.
+              entryFunction: window.__TARGET___entry,
+              containerElements: [screen],
+              environment: environment,
+              onLoaded: () => {
+                window.calm.state = 'running';
+                window.calm.events.push('running');
+                splash.classList.add('done');
+                setTimeout(() => splash.remove(), 400);
+              },
+              onExit: exitData => {
+                window.calm.state = 'exited';
+                window.calm.exit = exitData;
+                if (exitData.code !== 0 || exitData.crashed) {
+                  console.error('__TARGET__ exited', JSON.stringify(exitData));
+                }
+              },
+            },
+          });
+        } catch (error) {
+          window.calm.state = 'failed';
+          console.error(error);
+          bar.style.display = 'none';
+          setStatus(typeof WebAssembly === 'undefined'
+            ? 'This browser does not support WebAssembly.'
+            : 'Sorry, the game could not start. ' + (error && error.message ? error.message : ''));
+          splash.classList.remove('done');
+        }
+      }
+
+      start();
+    })();
+  </script>
+</body>
+</html>
