@@ -99,8 +99,10 @@ CalmPage {
                     onActivated: (index) => page.game.inputMode = index
                 }
 
+                // Width and side are set in Settings so the pad suits either hand.
                 NumberPad {
-                    width: parent.width
+                    width: parent.width * page.game.padWidth
+                    x: (parent.width - width) * (1 + page.game.padOffset) / 2
                     game: page.game
                 }
             }

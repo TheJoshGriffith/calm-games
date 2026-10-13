@@ -42,6 +42,8 @@ bool masksFromList(const QVariantList& list, std::array<sudoku::Mask, 81>& masks
 }
 
 const QString kMistakeMode = QStringLiteral("sudoku/mistakeMode");
+const QString kPadWidth = QStringLiteral("sudoku/padWidth");
+const QString kPadOffset = QStringLiteral("sudoku/padOffset");
 // The boolean option this replaced: true meant "compare with the answer".
 const QString kLegacyShowMistakes = QStringLiteral("sudoku/showMistakes");
 
@@ -174,6 +176,34 @@ void SudokuGame::setMistakeMode(int mode)
         emit optionsChanged();
         emit stateChanged(); // per-cell `mistake` depends on it
     }
+}
+
+qreal SudokuGame::padWidth() const
+{
+    return std::clamp(m_settings.value(kPadWidth, 1.0).toReal(), MinPadWidth, 1.0);
+}
+
+void SudokuGame::setPadWidth(qreal width)
+{
+    width = std::clamp(width, MinPadWidth, 1.0);
+    if (qFuzzyCompare(width, padWidth()))
+        return;
+    m_settings.setValue(kPadWidth, width);
+    emit optionsChanged();
+}
+
+qreal SudokuGame::padOffset() const
+{
+    return std::clamp(m_settings.value(kPadOffset, 0.0).toReal(), -1.0, 1.0);
+}
+
+void SudokuGame::setPadOffset(qreal offset)
+{
+    offset = std::clamp(offset, -1.0, 1.0);
+    if (qFuzzyCompare(offset + 2.0, padOffset() + 2.0))
+        return;
+    m_settings.setValue(kPadOffset, offset);
+    emit optionsChanged();
 }
 
 void SudokuGame::enter(int digit)

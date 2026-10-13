@@ -38,6 +38,10 @@ class SudokuGame : public GameSession {
     Q_PROPERTY(bool highlightPeers READ highlightPeers WRITE setHighlightPeers NOTIFY optionsChanged)
     Q_PROPERTY(bool highlightMatching READ highlightMatching WRITE setHighlightMatching NOTIFY optionsChanged)
     Q_PROPERTY(int mistakeMode READ mistakeMode WRITE setMistakeMode NOTIFY optionsChanged)
+    // Number pad layout: width as a fraction of the screen (0.5-1), and its
+    // position in the space left over (-1 = far left, 0 = centred, 1 = far right).
+    Q_PROPERTY(qreal padWidth READ padWidth WRITE setPadWidth NOTIFY optionsChanged)
+    Q_PROPERTY(qreal padOffset READ padOffset WRITE setPadOffset NOTIFY optionsChanged)
     Q_PROPERTY(bool showTimer READ showTimer WRITE setShowTimer NOTIFY optionsChanged)
     Q_PROPERTY(bool autoRemoveNotes READ autoRemoveNotes WRITE setAutoRemoveNotes NOTIFY optionsChanged)
 
@@ -70,6 +74,11 @@ public:
     bool highlightMatching() const { return option(QStringLiteral("highlightMatching"), true); }
     void setHighlightMatching(bool on) { setOption(QStringLiteral("highlightMatching"), on); }
     int mistakeMode() const;
+    qreal padWidth() const;
+    void setPadWidth(qreal width);
+    qreal padOffset() const;
+    void setPadOffset(qreal offset);
+    static constexpr qreal MinPadWidth = 0.5;
     void setMistakeMode(int mode);
     bool showTimer() const { return option(QStringLiteral("showTimer"), true); }
     void setShowTimer(bool on) { setOption(QStringLiteral("showTimer"), on); }
