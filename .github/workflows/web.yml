@@ -58,6 +58,8 @@ jobs:
       - name: Configure
         run: |
           emcc --version | head -n 1
+          # The all_os WebAssembly package loses its executable bits.
+          chmod +x "$QT_ROOT_DIR"/bin/*
           "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build-wasm -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DQT_HOST_PATH="$QT_HOST_PATH" \

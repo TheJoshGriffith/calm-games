@@ -34,6 +34,10 @@ QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ./build/games/sudoku/app/CalmSudoku
 ```
 
+Gwynant Sudoku also runs in the browser (Qt for WebAssembly, hosted on
+Cloudflare Pages); see [docs/WEB.md](docs/WEB.md) for the web build and the
+one-time Cloudflare setup.
+
 Generate puzzles:
 
 ```sh
