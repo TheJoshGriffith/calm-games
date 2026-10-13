@@ -1,4 +1,4 @@
-# Cloudflare Pages response headers for the Gwynant Sudoku web app.
+# Cloudflare Pages response headers for a Gwynant game's web app.
 # index.html is always revalidated, so a deploy is picked up at once. It loads
 # the engine files as name?v=<commit>, so each deploy gets fresh URLs and the
 # engine files themselves can be cached for a year.
@@ -21,9 +21,13 @@
   Content-Type: application/json
   Cache-Control: public, max-age=3600
 
-/*.wasm
-  Content-Type: application/wasm
-  Cache-Control: public, max-age=31536000, immutable
+# The app's code, gzipped by make-site.py and unzipped by the page itself.
+# It is an ordinary file, deliberately without Content-Encoding: gzip, so
+# browsers hand the page the gzip bytes. application/gzip is not a type
+# Cloudflare compresses, and no-transform asks it to leave the bytes alone.
+/*.wasm.gz
+  Content-Type: application/gzip
+  Cache-Control: public, max-age=31536000, immutable, no-transform
 
 /*.js
   Content-Type: text/javascript; charset=utf-8

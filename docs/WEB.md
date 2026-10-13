@@ -28,12 +28,13 @@ Its "Find web games" job lists every `games/<name>/app/CMakeLists.txt` with a
    `-lidbfs.js` linked so the page can pass environment variables and keep the
    home directory in IndexedDB) and builds the game's target.
 3. `tools/web/make-site.py` assembles `site/`:
-   - `<Target>.wasm`, `<Target>.js` and `qtloader.js`;
+   - `<Target>.wasm.gz` (the app's code, gzipped), `<Target>.js` and
+     `qtloader.js`;
    - `tools/web/index.html` in place of Qt's generated page: a calm loading
      screen with "Gwynant \<Title\>" and a progress bar, light or dark to
      match the system;
-   - `tools/web/_headers` (`application/wasm`, long caching for engine files,
-     which the page loads as `?v=<commit>`);
+   - `tools/web/_headers` (long caching for engine files, which the page
+     loads as `?v=<commit>`);
    - icons drawn from the game's iOS app icon;
    - anything in `games/<name>/app/web/site/`, copied last.
 4. `tools/web/smoke.mjs` serves the site the way Pages does and opens it in
@@ -42,8 +43,10 @@ Its "Find web games" job lists every `games/<name>/app/CMakeLists.txt` with a
    and checks they are really rendered. Then it runs the game's own checks from
    `games/<name>/app/web/smoke.mjs`, if there are any.
 5. Uploads `<name>-web-site` and `<name>-web-screenshots` as workflow
-   artifacts, and lists the download sizes in the job summary. The job fails
-   if the `.wasm` outgrows Cloudflare Pages' 25 MiB per-file limit.
+   artifacts, and lists the `.wasm` size (raw, gzip as uploaded, brotli) in
+   the job summary with a breakdown of what it is made of, from the link map.
+   The job warns when any uploaded file passes 15 MiB and fails over
+   Cloudflare Pages' 25 MiB per-file limit.
 6. Deploys `site/` to the Pages project `gwynant-<name>` with
    `wrangler pages deploy`, after the smoke test passes. It creates the
    project first if it doesn't exist.
@@ -87,6 +90,32 @@ After its first deploy to main, add its custom domain (step 5 below).
   file system, per browser and per domain. Sudoku's smoke test checks that a
   game survives a reload.
 
+### Download size
+
+Each game is one `.wasm` of about 23 MB: Qt's QML engine, Qt Quick, Qt GUI
+and Qt Core are about 14 MB of code between them, and the framework's sounds
+and fonts are 4.5 MB of data. Cloudflare Pages takes files up to 25 MiB, so:
+
+- **The code is uploaded gzipped.** `make-site.py` writes `<Target>.wasm.gz`
+  (about 9.6 MB) and no raw `.wasm`. It is served as a plain
+  `application/gzip` file (see `_headers`), which Cloudflare passes through
+  untouched. The page unzips it with the browser's `DecompressionStream` and
+  compiles it with `WebAssembly.compileStreaming` while it downloads (falling
+  back to compiling in one go), and the smoke test checks the streaming path
+  is used. Browsers without `DecompressionStream` (before Safari 16.4 or
+  Firefox 113) get a "please update your browser" message. Before this, the
+  raw file went out with Cloudflare's own brotli at about 10.3 MB.
+- **Unused parts of Qt are left out** by `framework/qt/cmake/CalmWeb.cmake`
+  (WebAssembly builds only): image format, icon engine and TLS plugins, Qt
+  Quick Controls (Calm uses QtQuick.Templates), the DejaVu fallback fonts the
+  wasm platform plugin embeds (Calm loads Nunito), and Qt Multimedia's video
+  shaders and Qt Quick's curve-renderer shaders. That saves about 2.1 MB raw
+  per game. `-DCALM_WEB_TRIM=...` switches the items on and off for
+  measuring; a game that needs one of them back (say, JPEG images) should ask
+  for it to be removed from the default list.
+- The job summary breaks the `.wasm` down by Qt module, plugin and resource
+  from the link map (`tools/web/wasm-size-report.py`).
+
 ### Building it yourself
 
 ```sh
@@ -95,10 +124,11 @@ source ~/emsdk/emsdk_env.sh
 ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake -S . -B build-wasm -G Ninja \
     -DCMAKE_BUILD_TYPE=MinSizeRel -DQT_HOST_PATH=$HOME/Qt/6.8.3/gcc_64 \
     -DQT_WASM_EXTRA_EXPORTED_METHODS="ENV,FS,addRunDependency,removeRunDependency" \
-    -DCMAKE_EXE_LINKER_FLAGS="-lidbfs.js" \
+    -DCMAKE_EXE_LINKER_FLAGS="-lidbfs.js -Wl,--Map=$PWD/link.map" \
     -DCALM_GAMES=sudoku -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF
 cmake --build build-wasm --target CalmSudoku
 python3 tools/web/make-site.py --build-dir build-wasm --game sudoku --out site
+python3 tools/web/wasm-size-report.py build-wasm/games/sudoku/app/CalmSudoku.wasm --map link.map
 python3 -m http.server -d site 8000      # then open http://localhost:8000
 # or, with Playwright installed: node tools/web/smoke.mjs site screens sudoku
 ```

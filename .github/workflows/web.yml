@@ -92,7 +92,8 @@ jobs:
       # ENV, FS and the run-dependency calls are exported for the page
       # (tools/web/index.html): it passes environment variables such as the
       # QML smoke test's CALM_SMOKE_TEST, and keeps the app's home directory
-      # in IndexedDB (IDBFS) so saves and settings survive a reload.
+      # in IndexedDB (IDBFS) so saves and settings survive a reload. The link
+      # map feeds the size breakdown in the job summary.
       # Errors from this step and the next also show as annotations.
       - name: Configure
         run: |
@@ -104,7 +105,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=MinSizeRel \
             -DQT_HOST_PATH="$QT_HOST_PATH" \
             -DQT_WASM_EXTRA_EXPORTED_METHODS="ENV,FS,addRunDependency,removeRunDependency" \
-            -DCMAKE_EXE_LINKER_FLAGS="-lidbfs.js" \
+            -DCMAKE_EXE_LINKER_FLAGS="-lidbfs.js -Wl,--Map=$PWD/link.map" \
             -DCALM_GAMES=${{ matrix.name }} -DCALM_BUILD_APPS=ON -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF 2>&1 | tee configure.log \
           || { grep -A4 "CMake Error" configure.log | head -n 30 | sed 's/^/::error::/'; exit 1; }
 
@@ -120,25 +121,32 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           python3 tools/web/make-site.py --build-dir build-wasm --game ${{ matrix.name }} --out site --build-id "${GITHUB_SHA::12}"
-          wasm=site/${{ matrix.target }}.wasm
+          wasm=build-wasm/games/${{ matrix.name }}/app/${{ matrix.target }}.wasm
           raw=$(stat -c %s "$wasm")
-          gz=$(gzip -9 -c "$wasm" | wc -c)
+          gz=$(stat -c %s "site/${{ matrix.target }}.wasm.gz")
           br=$(brotli -c -q 11 "$wasm" | wc -c)
           {
             echo "### ${{ matrix.title }} web build size (bytes)"
-            echo "| File | Raw | gzip -9 | brotli -q 11 |"
+            echo "| File | Raw | gzip -9 (uploaded) | brotli -q 11 |"
             echo "| --- | ---: | ---: | ---: |"
             echo "| ${{ matrix.target }}.wasm | $raw | $gz | $br |"
+            echo
+            python3 tools/web/wasm-size-report.py "$wasm" --map link.map --title "What ${{ matrix.target }}.wasm is made of" --top 15
           } | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "::notice title=${{ matrix.title }} download size::${{ matrix.target }}.wasm is $raw bytes raw, $gz gzip -9, $br brotli -q 11"
-          # Cloudflare Pages rejects any single file over 25 MiB.
-          if [ "$raw" -gt $((25 * 1024 * 1024)) ]; then
-            echo "::error::${{ matrix.target }}.wasm is $raw bytes, over Cloudflare Pages' 25 MiB file limit"
-            exit 1
-          fi
-          if [ "$raw" -gt $((23 * 1024 * 1024)) ]; then
-            echo "::warning::${{ matrix.target }}.wasm is $raw bytes, close to Cloudflare Pages' 25 MiB file limit"
-          fi
+          echo "::notice title=${{ matrix.title }} download size::${{ matrix.target }}.wasm is $raw bytes raw, uploaded as ${{ matrix.target }}.wasm.gz ($gz bytes); brotli -q 11 would be $br"
+          # Cloudflare Pages rejects any single file over 25 MiB, so check
+          # every file that is uploaded (the .wasm goes up gzipped), and warn
+          # well before the limit.
+          status=0
+          while read -r size file; do
+            if [ "$size" -gt $((25 * 1024 * 1024)) ]; then
+              echo "::error::$file is $size bytes, over Cloudflare Pages' 25 MiB file limit"
+              status=1
+            elif [ "$size" -gt $((15 * 1024 * 1024)) ]; then
+              echo "::warning::$file is $size bytes, getting close to Cloudflare Pages' 25 MiB file limit"
+            fi
+          done < <(find site -type f -printf '%s %P\n')
+          exit $status
 
       - uses: actions/setup-node@v4
         with:
