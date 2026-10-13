@@ -158,8 +158,9 @@ jobs:
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
-          SIMCTL_CHILD_CALM_SMOKE_TEST=1 \
-            timeout 120 xcrun simctl launch --console-pty --terminate-running-process "$UDID" com.thejoshgriffith.calm.sudoku \
+          # macOS has no `timeout`; perl's alarm gives the launch two minutes.
+          SIMCTL_CHILD_CALM_SMOKE_TEST=1 SIMCTL_CHILD_QT_FORCE_STDERR_LOGGING=1 \
+            perl -e 'alarm shift; exec @ARGV' 120 xcrun simctl launch --console-pty --terminate-running-process "$UDID" com.thejoshgriffith.calm.sudoku \
             2>&1 | tee launch.log || true
           grep -q "smoke test: ok" launch.log
 
