@@ -61,8 +61,11 @@ nothing for haptics beyond calling `emitFeedback`.
 Use the framework components instead of raw controls so every game looks and
 feels the same: `CalmPage`, `CalmText`, `CardButton`, `IconButton`,
 `ActionButton`, `SegmentedControl`, `ToggleRow`, `SettingsGroup`,
-`SettingsPage` (children become your game's settings groups) and `Icon` with
-`Icons.*`. All colours, radii and durations come from `Theme`; never hard-code
+`SettingsPage` (children become your game's settings groups), `BottomSheet`,
+`CalmTextField`, and `Icon` with `Icons.*`. `AppWindow.showNote(text)` shows
+a short note that fades away. To share a link, call
+`Sharing.share(text, anchorRect)`: the share sheet on iOS and in browsers
+that have one, the clipboard elsewhere (the window then says "Link copied"). All colours, radii and durations come from `Theme`; never hard-code
 them, and respect `Theme.quick`/`gentle`/`slow` so Reduce motion works.
 
 ## Changing the framework

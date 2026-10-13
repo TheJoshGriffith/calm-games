@@ -27,6 +27,11 @@ QtObject {
     readonly property color danger: dark ? "#E59A8F" : "#B4483B"
     readonly property color trackOff: dark ? "#3A4950" : "#C9D2D6"
     readonly property color knob: dark ? "#151D22" : "#FFFFFF"
+    // Dims the page behind a sheet.
+    readonly property color scrim: dark ? "#99070B0E" : "#47101A1F"
+    // A short note floating over the screen ("Link copied").
+    readonly property color noteFill: dark ? "#E4EBEE" : "#1F2A30"
+    readonly property color noteInk: dark ? "#151D22" : "#F2F4F3"
 
     readonly property int radius: 16
     readonly property int radiusSmall: 12

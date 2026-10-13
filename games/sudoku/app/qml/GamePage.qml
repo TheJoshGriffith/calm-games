@@ -7,6 +7,26 @@ CalmPage {
 
     required property SudokuGame game
     signal settingsRequested()
+    // A short note for the window to show ("Code copied").
+    signal noteRequested(string message)
+
+    objectName: "gamePage"
+
+    function openShareSheet() { shareSheet.open() }
+
+    // Shares the starting board, or the board as it is now, through the
+    // system share sheet (or the clipboard, where there is none).
+    function share(withProgress) {
+        const url = page.game.shareUrl(withProgress)
+        if (url.length === 0)
+            return
+        const text = withProgress ? qsTr("Here's my %1 Sudoku so far: %2")
+                                  : qsTr("Try this %1 Sudoku: %2")
+        // iPad points its share popover at the header's share button.
+        const p = shareButton.mapToItem(null, 0, 0)
+        shareSheet.close()
+        Sharing.share(text.arg(page.game.level).arg(url), Qt.rect(p.x, p.y, shareButton.width, shareButton.height))
+    }
 
     function formatTime(seconds) {
         const m = Math.floor(seconds / 60)
@@ -17,11 +37,20 @@ CalmPage {
     title: game.level
     subtitle: game.showTimer ? formatTime(game.elapsedSeconds) : ""
 
-    actions: IconButton {
-        iconPath: Icons.settings
-        text: qsTr("Settings")
-        onClicked: page.settingsRequested()
-    }
+    actions: [
+        IconButton {
+            id: shareButton
+            iconPath: Icons.share
+            text: qsTr("Share")
+            enabled: page.game.active && !page.game.loading
+            onClicked: shareSheet.open()
+        },
+        IconButton {
+            iconPath: Icons.settings
+            text: qsTr("Settings")
+            onClicked: page.settingsRequested()
+        }
+    ]
 
     // A tap on the page outside the grid and the controls clears the selection
     // and any focused digit.
@@ -171,6 +200,49 @@ CalmPage {
                 fill: Theme.subtle
                 onClicked: page.backRequested()
             }
+        }
+    }
+
+    // Share: the puzzle code to read out or copy, and links to the starting
+    // board or to the board with the player's progress.
+    BottomSheet {
+        id: shareSheet
+        parent: page
+        title: qsTr("Share puzzle")
+
+        CardButton {
+            width: parent.width
+            visible: page.game.puzzleCode.length > 0
+            text: page.game.puzzleCode
+            subtitle: qsTr("Puzzle code · tap to copy")
+            fill: Theme.surface
+            onClicked: {
+                Sharing.copy(page.game.puzzleCode)
+                page.noteRequested(qsTr("Code copied"))
+            }
+            Icon { path: Icons.copy; color: Theme.accent }
+        }
+        CalmText {
+            width: parent.width
+            visible: page.game.puzzleCode.length === 0
+            text: qsTr("This puzzle came from a link, so it has no code. You can still share it as a link.")
+            wrapMode: Text.WordWrap
+            font.pixelSize: 15
+            color: Theme.muted
+        }
+        CardButton {
+            width: parent.width
+            text: qsTr("Share this puzzle")
+            subtitle: qsTr("A link to the starting board")
+            onClicked: page.share(false)
+            Icon { path: Icons.share; color: Theme.accent }
+        }
+        CardButton {
+            width: parent.width
+            text: qsTr("Share my progress")
+            subtitle: qsTr("With your digits, notes and colours")
+            onClicked: page.share(true)
+            Icon { path: Icons.share; color: Theme.accent }
         }
     }
 }

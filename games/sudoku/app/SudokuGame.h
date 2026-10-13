@@ -49,6 +49,9 @@ class SudokuGame : public GameSession {
     // Selecting a cell, or pressing the same digit again, clears it.
     Q_PROPERTY(int focusDigit READ focusDigit WRITE setFocusDigit NOTIFY focusDigitChanged)
     Q_PROPERTY(QString technique READ technique NOTIFY stateChanged)
+    // The code a friend can type to get this puzzle ("H1-3KX9QZ0A"), or ""
+    // when it isn't known (a board opened from a share link carries no seed).
+    Q_PROPERTY(QString puzzleCode READ puzzleCode NOTIFY stateChanged)
 
     Q_PROPERTY(bool highlightPeers READ highlightPeers WRITE setHighlightPeers NOTIFY optionsChanged)
     Q_PROPERTY(bool highlightMatching READ highlightMatching WRITE setHighlightMatching NOTIFY optionsChanged)
@@ -85,6 +88,7 @@ public:
     int focusDigit() const { return m_focusDigit; }
     void setFocusDigit(int digit);
     QString technique() const;
+    QString puzzleCode() const;
 
     bool highlightPeers() const { return option(QStringLiteral("highlightPeers"), true); }
     void setHighlightPeers(bool on) { setOption(QStringLiteral("highlightPeers"), on); }
@@ -122,6 +126,22 @@ public:
     // or the selected one is filled. Returns false if no hint is available.
     Q_INVOKABLE bool hint();
 
+    // Sharing. shareUrl() is ShareUrlBase + a payload (sudoku/Share.h) for the
+    // starting board or, withProgress, also the player's digits, corner and
+    // centre marks and colours; "" when there is no game.
+    Q_INVOKABLE QString shareUrl(bool withProgress) const;
+    // Opens a share link: the whole URL or just its payload. It replaces the
+    // current game the way startNewGame() does, at the link's level (or the
+    // level the puzzle grades as), with the shared progress restored. Returns
+    // false and changes nothing if the link holds no puzzle with exactly one
+    // solution.
+    Q_INVOKABLE bool openShared(const QString& link);
+    // Starts the exact puzzle a code names (see puzzleCode), generating it
+    // like any new game (`loading` until it is ready). Returns false and
+    // changes nothing if the code is not valid.
+    Q_INVOKABLE bool startFromCode(const QString& code);
+    static inline const QString ShareUrlBase = QStringLiteral("https://sudoku.gwynant.app/s/");
+
     // Generated puzzles waiting per level, so a new game starts instantly.
     static constexpr int BufferSize = 2;
 
@@ -131,6 +151,8 @@ signals:
     void inputModeChanged();
     void focusDigitChanged();
     void optionsChanged();
+    // The puzzle a code named could not be generated; no game started.
+    void codeFailed();
 
 protected:
     void createGame(const QString& level) override;
@@ -149,6 +171,7 @@ private:
         sudoku::Grid colours {};
         sudoku::Technique hardest = sudoku::Technique::None;
         quint64 seed = 0;
+        bool seedKnown = false; // false for boards opened from a share link
         int completions = 0;
     };
 
@@ -162,8 +185,11 @@ private:
     void toggleMark(std::array<sudoku::Mask, 81>& marks, int digit);
     bool unitCorrect(int unit) const;
     void requestPuzzle(sudoku::Difficulty difficulty);
-    void onPuzzleReady(sudoku::Difficulty difficulty, const std::optional<sudoku::Puzzle>& puzzle);
+    void generate(sudoku::Difficulty difficulty, quint64 seed);
+    void onPuzzleReady(sudoku::Difficulty difficulty, quint64 seed, const std::optional<sudoku::Puzzle>& puzzle);
     void startWith(const sudoku::Puzzle& puzzle);
+    void startWith(const Board& board);
+    void stopWaiting();
     void resetInput();
 
     bool option(const QString& key, bool fallback) const;
@@ -175,6 +201,11 @@ private:
     int m_inputMode = NumberMode;
     int m_focusDigit = 0;
     std::optional<sudoku::Difficulty> m_waitingFor;
+    // The seed the player is waiting for (a typed code), if any.
+    std::optional<quint64> m_waitingSeed;
+    // Handed from openShared() / startFromCode() to createGame().
+    std::optional<Board> m_pendingBoard;
+    std::optional<quint64> m_pendingSeed;
     QHash<int, QList<sudoku::Puzzle>> m_buffer;
     QHash<int, int> m_inFlight;
 #if CALM_SUDOKU_THREADED_GENERATION
