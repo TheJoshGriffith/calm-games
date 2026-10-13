@@ -115,6 +115,15 @@ int main(int argc, char* argv[])
     QDesktopServices::setUrlHandler(QStringLiteral("https"), &shareLinks, "openUrl");
 #endif
 
+    // Development aid: --size <width>x<height> resizes the window (to check
+    // layouts such as a desktop browser's).
+    const int size = args.indexOf(QStringLiteral("--size"));
+    if (size >= 0 && size + 1 < args.size() && !engine.rootObjects().isEmpty()) {
+        const QStringList wh = args.at(size + 1).split(QLatin1Char('x'));
+        if (auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().constFirst()); window && wh.size() == 2)
+            window->resize(wh.at(0).toInt(), wh.at(1).toInt());
+    }
+
     // Development aid: --screenshot <file.png> saves the window after start-up
     // (combine with --play <Level>, --settings or --stats to open that screen).
     const int shot = args.indexOf(QStringLiteral("--screenshot"));
