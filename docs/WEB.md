@@ -1,5 +1,8 @@
 # Gwynant Sudoku on the web
 
+Gwynant Sudoku lives at **https://sudoku.gwynant.app**, served by the
+Cloudflare Pages project `gwynant-sudoku` (production branch `main`).
+
 The same Qt app runs in the browser, built with Qt for WebAssembly. There is
 no separate web code: `games/sudoku/app/web/` only holds the page that loads
 the app, its icons and the Cloudflare Pages settings.
@@ -17,11 +20,14 @@ the app, its icons and the Cloudflare Pages settings.
    page), icons, `_headers` and `_redirects`.
 4. `games/sudoku/app/web/smoke.mjs` serves the site and opens it in headless
    Chromium: it runs the app's QML smoke test (`?smoke=1`, fails on any QML
-   warning), screenshots the home screen at phone and desktop sizes, and
-   checks a share link reaches the app.
+   warning), screenshots the home screen at phone and desktop sizes and a
+   Hard game (so puzzle generation is exercised), checks each screenshot is
+   really rendered, and checks a share link reaches the app.
 5. Uploads `site/` and the screenshots as workflow artifacts
    (`sudoku-web-site`, `sudoku-web-screenshots`), and the job summary lists
-   the download sizes.
+   the download sizes. The build fails if `CalmSudoku.wasm` outgrows
+   Cloudflare Pages' 25 MiB per-file limit (it is about 22 MB; Cloudflare
+   serves it brotli-compressed, about 6.5 MB).
 6. On main only, and only once the two Cloudflare secrets exist, deploys
    `site/` to the Cloudflare Pages project `gwynant-sudoku`. Until then the
    deploy steps are skipped and CI stays green.
@@ -48,7 +54,8 @@ python3 -m http.server -d site 8000      # then open http://localhost:8000
 
 ## Share links
 
-`_redirects` serves `index.html` for `/s/<payload>`, and the page passes the
+`_redirects` serves `index.html` for `https://sudoku.gwynant.app/s/<payload>`
+(a rewrite, so the address bar keeps the link), and the page passes the
 payload to the app as `--share <payload>`. `main.cpp` currently only logs it;
 opening a shared board will hook in there.
 
@@ -62,15 +69,16 @@ opening a shared board will hook in there.
 3. **GitHub secrets.** In the repository: Settings > Secrets and variables >
    Actions > New repository secret, add `CLOUDFLARE_API_TOKEN` and
    `CLOUDFLARE_ACCOUNT_ID`.
-4. **The Pages project.** Nothing to do: the next push to main creates
-   `gwynant-sudoku` (production branch `main`) and deploys it. To create it
-   by hand instead: Workers & Pages > Create > Pages > "Upload assets"
-   (Direct Upload, not "Connect to Git"), named `gwynant-sudoku`. Re-run the
-   Web workflow on main (Actions > Web > Run workflow) to deploy without a
-   new commit. The site then lives at `https://gwynant-sudoku.pages.dev`.
-5. **Custom domain, once bought.** Workers & Pages > gwynant-sudoku > Custom
-   domains > Set up a custom domain, enter the domain (and `www.` if
-   wanted). Because the domain is on Cloudflare, the DNS record and
-   certificate are added for you.
+4. **The Pages project** `gwynant-sudoku`, production branch `main`. The
+   workflow creates it on its first deploy if it doesn't exist. To create it
+   by hand: Workers & Pages > Create > Pages > "Upload assets" (Direct
+   Upload). Don't connect it to the GitHub repository: a repository-connected
+   project builds the code itself and won't take uploads from wrangler. Once
+   the secrets are in, re-run the Web workflow on main (Actions > Web > Run
+   workflow) or push to main to deploy. It then also serves at
+   `https://gwynant-sudoku.pages.dev`.
+5. **Custom domain.** Workers & Pages > gwynant-sudoku > Custom domains >
+   Set up a custom domain > `sudoku.gwynant.app`. Because `gwynant.app` is on
+   Cloudflare, the CNAME record and certificate are added for you.
 
-Nothing in the code depends on the domain name.
+Nothing in the code depends on the domain name; only these docs mention it.

@@ -49,7 +49,7 @@ const fatal = /Aborted|RuntimeError|abort\(|unreachable|out of memory|failed to 
 
 // Counts Web Audio activity, so the test can tell whether sounds really play.
 function audioProbe() {
-  const probe = window.calmAudio = { contexts: 0, starts: 0, states: [] };
+  const probe = window.calmAudio = { contexts: 0, starts: 0, sources: 0, processors: 0, worklets: 0, states: [] };
   const Base = window.AudioContext;
   if (Base) {
     window.AudioContext = class extends Base {
@@ -59,6 +59,19 @@ function audioProbe() {
         probe.states.push(this.state);
         this.addEventListener('statechange', () => probe.states.push(this.state));
       }
+    };
+  }
+  const count = (proto, name, key) => {
+    const original = proto[name];
+    if (original)
+      proto[name] = function (...args) { probe[key]++; return original.apply(this, args); };
+  };
+  count(BaseAudioContext.prototype, 'createBufferSource', 'sources');
+  count(BaseAudioContext.prototype, 'createScriptProcessor', 'processors');
+  if (window.AudioWorkletNode) {
+    const Node = window.AudioWorkletNode;
+    window.AudioWorkletNode = class extends Node {
+      constructor(...args) { super(...args); probe.worklets++; }
     };
   }
   const start = AudioBufferSourceNode.prototype.start;
@@ -196,7 +209,7 @@ for (const [name, url, viewport, settleMs] of [['sudoku-web', '/', phone, 4000],
       if (name === 'sudoku-web-game') {
         // TEMP: find out whether sound plays after a real tap.
         console.log('audio before taps', JSON.stringify(await page.evaluate(() => window.calmAudio)));
-        for (const [x, y] of [[215, 400], [60, 820], [215, 820]]) {
+        for (const [x, y] of [[215, 400], [72, 640], [215, 470], [207, 640], [345, 640]]) {
           await page.mouse.click(x, y);
           await page.waitForTimeout(600);
         }

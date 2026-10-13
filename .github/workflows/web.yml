@@ -84,6 +84,11 @@ jobs:
               echo "| $f | $(( $(stat -c %s site/$f) / 1024 )) KiB | $(( $(gzip -9 -c site/$f | wc -c) / 1024 )) KiB | |"
             done
           } | tee -a "$GITHUB_STEP_SUMMARY"
+          # Cloudflare Pages rejects any single file over 25 MiB.
+          if [ "$raw" -gt $((25 * 1024 * 1024)) ]; then
+            echo "::error::CalmSudoku.wasm is $raw bytes, over Cloudflare Pages' 25 MiB file limit"
+            exit 1
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -104,7 +109,6 @@ jobs:
         run: |
           ls -l site screens
           wc -c < site/CalmSudoku.wasm; gzip -9 -c site/CalmSudoku.wasm | wc -c; brotli -c -q 11 site/CalmSudoku.wasm | wc -c || true
-          for f in screens/*-preview.jpg; do echo "BEGIN $f"; base64 -w 0 "$f"; echo; echo "END $f"; done
 
       - name: Upload site
         if: always()
