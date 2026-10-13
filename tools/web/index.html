@@ -176,13 +176,45 @@
       if (params.has('smoke'))
         environment.CALM_SMOKE_TEST = '1';
 
-      window.calm = { state: 'loading', exit: null };
+      window.calm = { state: 'loading', exit: null, storage: 'none' };
+
+      // Saves, settings and statistics are files under the app's home
+      // directory. Keep that directory in IndexedDB (Emscripten's IDBFS):
+      // load it before main() runs, and write changes back as they happen.
+      const home = '/home/web_user';
+      function persistentHome(instance) {
+        const FS = instance.FS;
+        const IDBFS = FS && FS.filesystems && FS.filesystems.IDBFS;
+        if (!IDBFS || !instance.addRunDependency) {
+          console.warn('No persistent storage: progress lasts only until the page closes.');
+          return;
+        }
+        try {
+          FS.mkdirTree(home);
+          FS.mount(IDBFS, { autoPersist: true }, home);
+        } catch (error) {
+          console.warn('No persistent storage:', error);
+          return;
+        }
+        instance.addRunDependency('calm-home');
+        FS.syncfs(true, error => {
+          if (error) console.warn('Could not load saved progress:', error);
+          window.calm.storage = error ? 'failed' : 'indexeddb';
+          instance.removeRunDependency('calm-home');
+        });
+        // Belt and braces for writes autoPersist hasn't flushed yet.
+        const flush = () => FS.syncfs(false, () => {});
+        document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
+        window.addEventListener('pagehide', flush);
+        window.calm.flush = () => new Promise(resolve => FS.syncfs(false, resolve));
+      }
 
       async function start() {
         try {
           const module = await fetchWasm('__TARGET__.wasm?v=__BUILD__');
           await qtLoad({
             arguments: appArguments(),
+            preRun: [persistentHome],
             qt: {
               module: Promise.resolve(module),
               // Qt 6.8 names the Emscripten factory <target>_entry.

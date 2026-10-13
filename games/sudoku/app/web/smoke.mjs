@@ -24,7 +24,8 @@ export default async function sudokuChecks(t) {
       await page.screenshot({ path: join(t.shotDir, 'sudoku-web-game-after-taps.png') });
 
       // The moves were autosaved; reopening the site should offer to resume.
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(1000);
+      console.log(`storage: ${await page.evaluate(() => window.calm.storage)}`);
       await page.goto(t.base + '/');
       await t.waitFor(page, log, s => s === 'running', 120000, 'reload');
       await page.waitForTimeout(4000);

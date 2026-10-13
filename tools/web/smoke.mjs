@@ -255,6 +255,8 @@ server.close();
 
 if (failures.length) {
   console.error('\nweb smoke test FAILED:\n- ' + failures.join('\n- '));
+  if (process.env.GITHUB_ACTIONS)
+    for (const f of failures) console.log(`::error::${f.split('\n')[0]}`);
   process.exit(1);
 }
 console.log('\nweb smoke test passed');
