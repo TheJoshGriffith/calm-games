@@ -126,8 +126,9 @@ Rectangle {
                 // and let through it partly so both stay visible.
                 Rectangle {
                     anchors.fill: parent
-                    color: cell.selected || cell.focused ? Theme.selection : cell.matching ? Theme.match
-                         : cell.blocked ? Theme.blocked : cell.peer ? Theme.peer : "transparent"
+                    // A focused digit looks like a selected cell's matches and peers.
+                    color: cell.selected ? Theme.selection : cell.matching || cell.focused ? Theme.match
+                         : cell.blocked || cell.peer ? Theme.peer : "transparent"
                     opacity: cell.coloured ? (cell.selected ? 0.6 : 0.45) : 1
                     Behavior on color { ColorAnimation { duration: Theme.quick } }
                 }
