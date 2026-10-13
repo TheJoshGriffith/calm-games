@@ -32,9 +32,21 @@ the app, its icons and the Cloudflare Pages settings.
    `site/` to the Cloudflare Pages project `gwynant-sudoku`. Until then the
    deploy steps are skipped and CI stays green.
 
-The single-threaded build needs no special headers (multithreaded Qt for
-WebAssembly would need COOP/COEP). It does mean puzzles are generated on the
-main thread, one at a time between frames, instead of on a worker thread.
+### Differences from the phone apps
+
+- **Threads.** The single-threaded build needs no special headers
+  (multithreaded Qt for WebAssembly would need COOP/COEP). Puzzles are
+  generated on the main thread instead of with QtConcurrent: one at a time,
+  with frames drawn in between, starting shortly after the first screen
+  appears. A level the player is waiting for goes first. A Hard puzzle
+  takes a few hundred milliseconds.
+- **Sound** works through Qt Multimedia's WebAssembly backend (Web Audio).
+  Browsers only allow audio after the first tap or key press, so the very
+  first sound may be silent; after that every feedback sound plays. The
+  smoke test checks sounds start after tapping digits.
+- **Haptics** do nothing (`Platform_generic.cpp`).
+- **Settings, saves and statistics** use `QSettings`, which Qt stores in
+  the browser's local storage, per browser and per domain.
 
 ### Building it yourself
 

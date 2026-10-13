@@ -99,16 +99,10 @@ jobs:
           npm install --no-save --no-package-lock playwright@1.56.1
           npx playwright install --with-deps chromium
 
+      # Loads the site in Chromium: QML smoke test, home and game screenshots,
+      # a few real taps (sound must start), and a share link.
       - name: Smoke test in headless Chromium
-        env:
-          TEMP_PREVIEW: 1
         run: node games/sudoku/app/web/smoke.mjs site screens
-
-      - name: TEMP diagnostics
-        if: always()
-        run: |
-          ls -l site screens
-          wc -c < site/CalmSudoku.wasm; gzip -9 -c site/CalmSudoku.wasm | wc -c; brotli -c -q 11 site/CalmSudoku.wasm | wc -c || true
 
       - name: Upload site
         if: always()

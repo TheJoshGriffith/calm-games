@@ -207,15 +207,21 @@ for (const [name, url, viewport, settleMs] of [['sudoku-web', '/', phone, 4000],
       if (look.colours < 12 || look.dark < 0.003)
         failures.push(`${name}: the screenshot looks blank (${look.colours} colours)`);
       if (name === 'sudoku-web-game') {
-        // TEMP: find out whether sound plays after a real tap.
-        console.log('audio before taps', JSON.stringify(await page.evaluate(() => window.calmAudio)));
-        for (const [x, y] of [[215, 400], [72, 640], [215, 470], [207, 640], [345, 640]]) {
+        // Play a few moves with real taps: select a cell, tap a digit on the
+        // pad (coordinates for the 430x932 layout). Browsers only let audio
+        // start after a user gesture, so this is where sound must begin.
+        const before = await page.evaluate(() => window.calmAudio.starts);
+        const taps = [[215, 400], [72, 640], [215, 470], [207, 640], [345, 640],
+                      [72, 640], [207, 640], [345, 640], [72, 640], [207, 640]];
+        for (const [x, y] of taps) {
           await page.mouse.click(x, y);
-          await page.waitForTimeout(600);
+          await page.waitForTimeout(400);
         }
-        console.log('audio after taps', JSON.stringify(await page.evaluate(() => window.calmAudio)));
-        const after = await page.screenshot({ path: join(shotDir, `${name}-after-taps.png`) });
-        console.log((await inspect(after)).map);
+        const audio = await page.evaluate(() => window.calmAudio);
+        console.log(`audio after ${taps.length} taps: ${JSON.stringify(audio)}`);
+        if (audio.starts <= before)
+          failures.push(`${name}: no sound started after tapping digits`);
+        await page.screenshot({ path: join(shotDir, `${name}-after-taps.png`) });
       }
     } finally {
       await page.close();
