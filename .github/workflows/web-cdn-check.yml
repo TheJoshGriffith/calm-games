@@ -1,0 +1,29 @@
+name: Web CDN check
+
+# TEMPORARY (branch web-size): how Cloudflare Pages serves the game's code,
+# raw (production) and pre-gzipped (this branch's preview).
+on:
+  push:
+    branches: [web-size]
+    paths: ['.github/workflows/web-cdn-check.yml']
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Headers and transfer sizes
+        run: |
+          for url in \
+            https://sudoku.gwynant.app/CalmSudoku.wasm \
+            https://gwynant-sudoku.pages.dev/CalmSudoku.wasm \
+            https://web-size.gwynant-sudoku.pages.dev/CalmSudoku.wasm.gz \
+            https://web-size.gwynant-sudoku.pages.dev/CalmSudoku.wasm \
+            https://web-size.gwynant-sudoku.pages.dev/CalmSudoku.js \
+            https://web-size.gwynant-sudoku.pages.dev/; do
+            for enc in "br, gzip" "gzip" "identity"; do
+              echo "== $url (Accept-Encoding: $enc)"
+              curl -sS -o body -D headers -H "Accept-Encoding: $enc" "$url" || true
+              grep -iE "^(HTTP|content-type|content-encoding|content-length|cache-control|cf-cache-status)" headers
+              echo "downloaded bytes: $(stat -c %s body)"
+            done
+          done
