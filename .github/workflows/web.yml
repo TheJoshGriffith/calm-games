@@ -100,8 +100,7 @@ jobs:
       - name: TEMP diagnostics
         if: always()
         run: |
-          grep -n "arguments\|environment\|module\|entryFunction\|onExit\|onLoaded" site/qtloader.js | head -60 || true
-          grep -o "[A-Za-z_]*_entry" site/CalmSudoku.js | sort -u | head || true
+          sed -n 60,260p site/qtloader.js
           if [ -f screens/sudoku-web.png ]; then echo "BEGIN-PNG"; base64 -w 200 screens/sudoku-web.png; echo "END-PNG"; fi
 
       - name: Upload site

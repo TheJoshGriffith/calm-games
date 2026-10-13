@@ -58,7 +58,7 @@ async function open(name, url, viewport) {
       failures.push(`${name}: ${msg.text()}`);
   });
   page.on('pageerror', err => {
-    console.log(`  ${name} [pageerror] ${err.message}`);
+    console.log(`  ${name} [pageerror] ${err.stack || err.message}`);
     failures.push(`${name}: page error: ${err.message}`);
   });
   page.on('requestfailed', r => failures.push(`${name}: request failed: ${r.url()}`));
