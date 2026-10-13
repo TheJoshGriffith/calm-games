@@ -47,8 +47,79 @@ const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable
 const failures = [];
 const fatal = /Aborted|RuntimeError|abort\(|unreachable|out of memory|failed to load|could not start|exited/i;
 
+// Counts Web Audio activity, so the test can tell whether sounds really play.
+function audioProbe() {
+  const probe = window.calmAudio = { contexts: 0, starts: 0, states: [] };
+  const Base = window.AudioContext;
+  if (Base) {
+    window.AudioContext = class extends Base {
+      constructor(...args) {
+        super(...args);
+        probe.contexts++;
+        probe.states.push(this.state);
+        this.addEventListener('statechange', () => probe.states.push(this.state));
+      }
+    };
+  }
+  const start = AudioBufferSourceNode.prototype.start;
+  AudioBufferSourceNode.prototype.start = function (...args) {
+    probe.starts++;
+    return start.apply(this, args);
+  };
+}
+
+// Checks a screenshot is a real rendered screen (not blank, not just the
+// splash) and returns a coarse character map of it for the log.
+async function inspect(png) {
+  const page = await browser.newPage();
+  try {
+    return await page.evaluate(async b64 => {
+      const img = new Image();
+      img.src = 'data:image/png;base64,' + b64;
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const g = canvas.getContext('2d');
+      g.drawImage(img, 0, 0);
+      const d = g.getImageData(0, 0, canvas.width, canvas.height).data;
+      const lum = j => 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+      const colours = new Set();
+      let dark = 0;
+      for (let j = 0; j < d.length; j += 4) {
+        colours.add(((d[j] >> 4) << 8) | ((d[j + 1] >> 4) << 4) | (d[j + 2] >> 4));
+        if (lum(j) < 110) dark++;
+      }
+      const cols = 54;
+      const cw = canvas.width / cols, ch = cw * 2;
+      const lines = [];
+      for (let r = 0; (r + 1) * ch <= canvas.height; r++) {
+        let line = '';
+        for (let k = 0; k < cols; k++) {
+          let sum = 0, sat = 0, n = 0;
+          for (let y = Math.floor(r * ch); y < (r + 1) * ch; y += 2) {
+            for (let x = Math.floor(k * cw); x < (k + 1) * cw; x += 2) {
+              const j = (y * canvas.width + x) * 4;
+              sum += lum(j);
+              sat += Math.max(d[j], d[j + 1], d[j + 2]) - Math.min(d[j], d[j + 1], d[j + 2]);
+              n++;
+            }
+          }
+          const l = sum / n, s = sat / n;
+          line += l >= 250 ? ' ' : l >= 238 ? '.' : l >= 200 ? (s > 25 ? '~' : ':') : l >= 140 ? (s > 40 ? 'o' : '-') : l >= 80 ? '+' : '#';
+        }
+        lines.push(line);
+      }
+      return { colours: colours.size, dark: dark / (d.length / 4), map: lines.join('\n') };
+    }, png.toString('base64'));
+  } finally {
+    await page.close();
+  }
+}
+
 async function open(name, url, viewport) {
   const page = await browser.newPage({ viewport, deviceScaleFactor: 2 });
+  await page.addInitScript(audioProbe);
   const log = [];
   page.on('console', msg => {
     const line = `[${msg.type()}] ${msg.text()}`;
@@ -116,10 +187,23 @@ for (const [name, url, viewport, settleMs] of [['sudoku-web', '/', phone, 4000],
         return count(document);
       });
       if (canvases < 1) failures.push(`${name}: no Qt canvas on the page`);
-      await page.screenshot({ path: join(shotDir, `${name}.png`) });
-      if (process.env.TEMP_PREVIEW)
-        await page.screenshot({ path: join(shotDir, `${name}-preview.jpg`), type: 'jpeg', quality: 70, scale: 'css' });
-      console.log(`saved ${join(shotDir, `${name}.png`)} (${canvases} canvas)`);
+      const png = await page.screenshot({ path: join(shotDir, `${name}.png`) });
+      const look = await inspect(png);
+      console.log(`saved ${join(shotDir, `${name}.png`)} (${canvases} canvas, ${look.colours} colours, ` +
+                  `${(100 * look.dark).toFixed(1)}% dark)\n${look.map}`);
+      if (look.colours < 12 || look.dark < 0.003)
+        failures.push(`${name}: the screenshot looks blank (${look.colours} colours)`);
+      if (name === 'sudoku-web-game') {
+        // TEMP: find out whether sound plays after a real tap.
+        console.log('audio before taps', JSON.stringify(await page.evaluate(() => window.calmAudio)));
+        for (const [x, y] of [[215, 400], [60, 820], [215, 820]]) {
+          await page.mouse.click(x, y);
+          await page.waitForTimeout(600);
+        }
+        console.log('audio after taps', JSON.stringify(await page.evaluate(() => window.calmAudio)));
+        const after = await page.screenshot({ path: join(shotDir, `${name}-after-taps.png`) });
+        console.log((await inspect(after)).map);
+      }
     } finally {
       await page.close();
     }
