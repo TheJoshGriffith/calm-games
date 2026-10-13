@@ -606,6 +606,28 @@ private slots:
             QCOMPARE(game.mistakeMode(), int(SudokuGame::MistakesClashes));
         }
     }
+
+    void padLayoutIsClampedAndPersisted()
+    {
+        {
+            SudokuGame game;
+            QCOMPARE(game.padWidth(), 1.0);
+            QCOMPARE(game.padOffset(), 0.0);
+            QSignalSpy options(&game, &SudokuGame::optionsChanged);
+            game.setPadWidth(0.2); // below the minimum
+            game.setPadOffset(3.0); // past the right edge
+            QCOMPARE(game.padWidth(), SudokuGame::MinPadWidth);
+            QCOMPARE(game.padOffset(), 1.0);
+            QCOMPARE(options.count(), 2);
+            game.setPadOffset(1.0); // unchanged: no signal
+            QCOMPARE(options.count(), 2);
+            game.setPadWidth(0.75);
+            game.setPadOffset(-0.4);
+        }
+        SudokuGame game;
+        QCOMPARE(game.padWidth(), 0.75);
+        QCOMPARE(game.padOffset(), -0.4);
+    }
 };
 
 QTEST_GUILESS_MAIN(SudokuGameTests)
