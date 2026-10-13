@@ -184,6 +184,7 @@ await step('QML smoke test', async () => {
 // 2. Home screen at phone and desktop sizes, and a Hard game, whose puzzle is
 //    generated on the browser's main thread.
 const phone = { width: 430, height: 932 };
+let firstVisitHome = null;
 for (const [name, url, viewport, settleMs] of [['sudoku-web', '/', phone, 4000],
                                                ['sudoku-web-desktop', '/', { width: 1280, height: 800 }, 4000],
                                                ['sudoku-web-game', '/?play=Hard', phone, 8000]]) {
@@ -204,6 +205,7 @@ for (const [name, url, viewport, settleMs] of [['sudoku-web', '/', phone, 4000],
       const look = await inspect(png);
       console.log(`saved ${join(shotDir, `${name}.png`)} (${canvases} canvas, ${look.colours} colours, ` +
                   `${(100 * look.dark).toFixed(1)}% dark)\n${look.map}`);
+      if (name === 'sudoku-web') firstVisitHome = look.map;
       if (look.colours < 12 || look.dark < 0.003)
         failures.push(`${name}: the screenshot looks blank (${look.colours} colours)`);
       if (name === 'sudoku-web-game') {
@@ -235,6 +237,10 @@ for (const [name, url, viewport, settleMs] of [['sudoku-web', '/', phone, 4000],
         await page.waitForTimeout(4000);
         const resumed = await inspect(await page.screenshot({ path: join(shotDir, 'sudoku-web-reopened.png') }));
         console.log(`home screen after reopening:\n${resumed.map}`);
+        // A first visit has no game to continue; after playing, the home
+        // screen gains a Continue card, so it must look different.
+        if (firstVisitHome && resumed.map === firstVisitHome)
+          failures.push('reopened site shows no saved game (saves did not persist)');
       }
     } finally {
       await page.close();

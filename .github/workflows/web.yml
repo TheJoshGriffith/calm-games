@@ -16,9 +16,11 @@ jobs:
     name: Sudoku (WebAssembly)
     runs-on: ubuntu-latest
     env:
-      # Deploying happens only on main, once the Cloudflare secrets exist; pull
-      # requests (and main before then) build, smoke-test and upload the site.
-      CAN_DEPLOY: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+      # Deploys need the Cloudflare secrets. Pushes to main deploy production
+      # (sudoku.gwynant.app); pull requests from this repository get a preview
+      # deploy. Fork pull requests get no secrets, so they only build and test.
+      CAN_DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+      DEPLOY_BRANCH: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
       # Qt 6.8 is built and tested against this Emscripten version.
       EMSDK_VERSION: '3.1.56'
     steps:
@@ -120,19 +122,19 @@ jobs:
           path: screens
           if-no-files-found: ignore
 
-      # wrangler can't create a Pages project as part of a non-interactive
-      # deploy, so create it first; this fails harmlessly once it exists.
-      - name: Make sure the Pages project exists
-        if: env.CAN_DEPLOY == 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@3 pages project create gwynant-sudoku --production-branch=main || echo "Project already exists."
-
+      # The Pages project gwynant-sudoku (production branch main) already
+      # exists; --branch main is production, any other branch a preview.
       - name: Deploy to Cloudflare Pages
+        id: deploy
         if: env.CAN_DEPLOY == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy site --project-name=gwynant-sudoku --branch=main --commit-dirty=true
+          command: pages deploy site --project-name=gwynant-sudoku --branch=${{ env.DEPLOY_BRANCH }} --commit-hash=${{ github.event.pull_request.head.sha || github.sha }} --commit-dirty=true
+
+      - name: Deployment link
+        if: env.CAN_DEPLOY == 'true'
+        run: |
+          echo "### Deployed ${DEPLOY_BRANCH}" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.deploy.outputs.deployment-url }}" | tee -a "$GITHUB_STEP_SUMMARY"

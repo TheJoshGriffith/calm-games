@@ -28,9 +28,14 @@ the app, its icons and the Cloudflare Pages settings.
    the download sizes. The build fails if `CalmSudoku.wasm` outgrows
    Cloudflare Pages' 25 MiB per-file limit (it is about 22 MB; Cloudflare
    serves it brotli-compressed, about 6.5 MB).
-6. On main only, and only once the two Cloudflare secrets exist, deploys
-   `site/` to the Cloudflare Pages project `gwynant-sudoku`. Until then the
-   deploy steps are skipped and CI stays green.
+6. Deploys `site/` to the Cloudflare Pages project `gwynant-sudoku` with
+   `wrangler pages deploy`, after the smoke test passes:
+   - a push to main deploys production (`sudoku.gwynant.app`);
+   - a pull request from this repository deploys a preview at
+     `https://<branch>.gwynant-sudoku.pages.dev` (the link is in the job
+     summary);
+   - without the two Cloudflare secrets (fork pull requests, or before they
+     were added) the deploy is skipped and CI stays green.
 
 ### Differences from the phone apps
 
@@ -81,14 +86,12 @@ opening a shared board will hook in there.
 3. **GitHub secrets.** In the repository: Settings > Secrets and variables >
    Actions > New repository secret, add `CLOUDFLARE_API_TOKEN` and
    `CLOUDFLARE_ACCOUNT_ID`.
-4. **The Pages project** `gwynant-sudoku`, production branch `main`. The
-   workflow creates it on its first deploy if it doesn't exist. To create it
-   by hand: Workers & Pages > Create > Pages > "Upload assets" (Direct
-   Upload). Don't connect it to the GitHub repository: a repository-connected
-   project builds the code itself and won't take uploads from wrangler. Once
-   the secrets are in, re-run the Web workflow on main (Actions > Web > Run
-   workflow) or push to main to deploy. It then also serves at
-   `https://gwynant-sudoku.pages.dev`.
+4. **The Pages project** `gwynant-sudoku`, production branch `main`
+   (already created). It must be a Direct Upload project ("Upload assets"),
+   not one connected to the GitHub repository: a repository-connected
+   project builds the code itself and won't take uploads from wrangler. To
+   redeploy without a new commit: Actions > Web > Run workflow on main. The
+   site also serves at `https://gwynant-sudoku.pages.dev`.
 5. **Custom domain.** Workers & Pages > gwynant-sudoku > Custom domains >
    Set up a custom domain > `sudoku.gwynant.app`. Because `gwynant.app` is on
    Cloudflare, the CNAME record and certificate are added for you.
