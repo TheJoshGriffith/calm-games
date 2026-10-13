@@ -222,6 +222,19 @@ for (const [name, url, viewport, settleMs] of [['sudoku-web', '/', phone, 4000],
         if (audio.starts <= before)
           failures.push(`${name}: no sound started after tapping digits`);
         await page.screenshot({ path: join(shotDir, `${name}-after-taps.png`) });
+
+        // The moves were autosaved; reopening the site should offer to resume.
+        const storage = await page.evaluate(async () => ({
+          localStorage: Object.keys(localStorage),
+          indexedDB: indexedDB.databases ? (await indexedDB.databases()).map(d => d.name) : [],
+        }));
+        console.log(`storage after moves: ${JSON.stringify(storage)}`);
+        await page.waitForTimeout(1500);
+        await page.goto(base + '/');
+        await waitFor(page, log, s => s === 'running', 120000, 'reload');
+        await page.waitForTimeout(4000);
+        const resumed = await inspect(await page.screenshot({ path: join(shotDir, 'sudoku-web-reopened.png') }));
+        console.log(`home screen after reopening:\n${resumed.map}`);
       }
     } finally {
       await page.close();
