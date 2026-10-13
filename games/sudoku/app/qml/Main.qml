@@ -13,6 +13,7 @@ AppWindow {
     }
 
     initialItem: HomePage {
+        id: homePage
         game: sudoku
         onPlayRequested: window.push(gamePage)
         onSettingsRequested: window.push(settingsPage)
@@ -22,16 +23,53 @@ AppWindow {
     // Level ids as Stats records them (and as HomePage starts them).
     readonly property var levels: ["Easy", "Medium", "Hard", "Expert"]
 
+    // Opens a share link (main.cpp passes web links and iOS universal links
+    // here) and shows the game. Returns false if the link holds no puzzle.
+    function openLink(link) {
+        if (!sudoku.openShared(link)) {
+            window.showNote(qsTr("That link doesn't hold a puzzle"))
+            return false
+        }
+        const page = showGame()
+        // Development aid: --share <link> --share-sheet shows its share sheet.
+        if (Qt.application.arguments.indexOf("--share-sheet") >= 0)
+            page.openShareSheet()
+        return true
+    }
+
+    // Brings the game screen to the front, from wherever the player is.
+    function showGame() {
+        const current = window.stack.currentItem
+        if (current && current.objectName === "gamePage")
+            return current
+        if (window.stack.depth > 1)
+            window.stack.pop(window.stack.get(0))
+        return window.push(gamePage)
+    }
+
+    Connections {
+        target: sudoku
+        function onCodeFailed() {
+            window.showNote(qsTr("Sorry, that code didn't make a puzzle"))
+            if (window.stack.depth > 1)
+                window.stack.pop(window.stack.get(0))
+        }
+    }
+
     // Development aids: --play <Level> opens a new game, --settings the
     // settings, --stats the statistics. --dark shows the dark theme for this
     // run only. With --play, --demo-input seeds marks, colours, a clash and a
     // multi-selection for screenshots, --mode <Number|Corner|Centre|Colour>
-    // picks the input mode, and --focus <digit> focuses a digit with nothing
-    // selected.
+    // picks the input mode, --focus <digit> focuses a digit with nothing
+    // selected, and --share-sheet opens the share sheet. Without --play,
+    // --enter-code [code] opens the code sheet on the home screen (and tries
+    // the code, if one is given).
     property string themeBeforeDev: ""
     property bool demoPending: false
     property bool demoInput: false
     property int demoFocus: 0
+    property bool demoShareSheet: false
+    property Item demoPage: null
 
     Component.onCompleted: {
         const args = Qt.application.arguments
@@ -44,10 +82,15 @@ AppWindow {
             demoInput = args.indexOf("--demo-input") >= 0
             const focus = args.indexOf("--focus")
             demoFocus = focus >= 0 && focus + 1 < args.length ? parseInt(args[focus + 1]) : 0
-            demoPending = demoInput || demoFocus > 0
+            demoShareSheet = args.indexOf("--share-sheet") >= 0
+            demoPending = demoInput || demoFocus > 0 || demoShareSheet
             sudoku.startNewGame(args[play + 1])
-            window.push(gamePage)
+            demoPage = window.push(gamePage)
             seedDemoWhenReady()
+        } else if (args.indexOf("--enter-code") >= 0) {
+            const code = args.indexOf("--enter-code")
+            const text = code + 1 < args.length && !args[code + 1].startsWith("--") ? args[code + 1] : ""
+            homePage.openCodeSheet(text)
         } else if (args.indexOf("--settings") >= 0) {
             window.push(settingsPage)
         } else if (args.indexOf("--stats") >= 0) {
@@ -80,6 +123,8 @@ AppWindow {
             sudoku.clearSelection()
             sudoku.enter(demoFocus)
         }
+        if (demoShareSheet && demoPage)
+            demoPage.openShareSheet()
     }
 
     function seedDemo() {
@@ -156,6 +201,7 @@ AppWindow {
             game: sudoku
             onBackRequested: window.pop()
             onSettingsRequested: window.push(settingsPage)
+            onNoteRequested: (message) => window.showNote(message)
         }
     }
 

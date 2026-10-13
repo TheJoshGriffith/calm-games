@@ -55,11 +55,51 @@ export default async function sudokuChecks(t) {
   });
 
   // A share link (/s/<payload>, rewritten to index.html by _redirects) loads
-  // the same app and hands it the payload.
+  // the same app, which opens the shared board: Hard puzzle H1-00000004 with
+  // its top three rows filled in, corner marks, and the bottom three rows
+  // coloured yellow and teal. Sharing it on gives the starting board's link.
+  const progress = '1fWVYFhCiCIMgaxy5RCD4Gpet__8AAAAACnYNYGuXxNgAAkkkkkkwDAYADwEBAYDBgYGBgAAAAAAAAA2222xkK0ZCtGQrQ';
+  const start = '1cGVYFhCiCIMgaxy5RCD4Gpes';
   await t.step('share link', async () => {
-    const { page, log } = await t.open('share', '/s/smoke-payload');
+    const { page, log, look } = await t.shoot('sudoku-web-shared', `/s/${progress}`, t.phone, 4000);
     try {
-      await t.waitFor(page, log, () => log.some(l => l.includes('share link: smoke-payload')), 120000, 'share link');
+      if (!log.some(l => l.includes('share link: opened')))
+        t.fail(`share link: the app did not open the shared board\n${log.slice(-20).join('\n')}`);
+      // The board, not the home screen, and with the shared colours on it
+      // (light saturated cells are '~' in the map).
+      const tinted = map => (map.match(/~/g) || []).length;
+      console.log(`tinted cells: shared ${tinted(look.map)}, home ${t.home ? tinted(t.home) : '?'}`);
+      if (t.home && (look.map === t.home || tinted(look.map) < tinted(t.home) + 40))
+        t.fail('share link: the shared board (with its colours) is not on screen');
+
+      // Share it on: the header's share button, then "Share this puzzle"
+      // (coordinates for the 430x932 layout). Headless Chromium has no share
+      // sheet, so the link goes to the clipboard with a "Link copied" note.
+      await page.mouse.click(348, 34);
+      await page.waitForTimeout(800);
+      await page.screenshot({ path: join(t.shotDir, 'sudoku-web-share-sheet.png') });
+      await page.mouse.click(215, 779);
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: join(t.shotDir, 'sudoku-web-link-copied.png') });
+      const shared = await page.evaluate(() => window.calm.shared);
+      console.log(`shared: ${JSON.stringify(shared)}`);
+      const expected = `Try this Hard Sudoku: https://sudoku.gwynant.app/s/${start}`;
+      if (!shared.includes(expected))
+        t.fail(`share link: sharing the opened board gave ${JSON.stringify(shared)}, not "${expected}"`);
+    } finally {
+      await page.close();
+    }
+  });
+
+  // A link with no puzzle in it is turned away and the app carries on.
+  await t.step('bad share link', async () => {
+    const { page, log } = await t.open('bad-share', '/s/not-a-board');
+    try {
+      await t.waitFor(page, log, () => log.some(l => l.includes('share link: rejected not-a-board')), 120000, 'bad share link');
+      await page.waitForTimeout(1000);
+      const state = await page.evaluate(() => window.calm.state);
+      if (state !== 'running')
+        t.fail(`bad share link: app state is ${state}`);
     } finally {
       await page.close();
     }

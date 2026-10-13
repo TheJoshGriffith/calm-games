@@ -88,6 +88,9 @@ protected:
     virtual void applySnapshot(const QVariant& snapshot) = 0;
 
     void beginGame();
+    // Gives up on a startNewGame() that is still loading (say, generation
+    // failed): `loading` turns false and no game is active.
+    void cancelNewGame();
     void beginMove();
     void endMove();
     void finishGame();

@@ -1,10 +1,12 @@
 #include <QDebug>
+#include <QDesktopServices>
 #include <QFile>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlExtensionPlugin>
 #include <QQuickWindow>
 #include <QTimer>
+#include <QUrl>
 
 Q_IMPORT_QML_PLUGIN(CalmPlugin)
 
@@ -29,6 +31,46 @@ void countingHandler(QtMsgType type, const QMessageLogContext& context, const QS
     }
     g_previousHandler(type, context, message);
 }
+
+// Hands share links to Main.qml's openLink(), which opens the shared board
+// (or says the link holds none) and shows the game.
+class ShareLinks : public QObject {
+    Q_OBJECT
+
+public:
+    explicit ShareLinks(QQmlApplicationEngine& engine)
+        : m_engine(engine)
+    {
+    }
+
+    bool open(const QString& link)
+    {
+        QVariant opened;
+        if (QObject* root = m_engine.rootObjects().value(0))
+            QMetaObject::invokeMethod(root, "openLink", Q_RETURN_ARG(QVariant, opened), Q_ARG(QVariant, link));
+        qInfo("share link: %s %s", opened.toBool() ? "opened" : "rejected", qPrintable(link));
+        return opened.toBool();
+    }
+
+public slots:
+    // QDesktopServices URL handler for https: iOS hands universal links
+    // (https://sudoku.gwynant.app/s/...) to it, once the app has the
+    // associated-domains entitlement. Any other https URL the app itself
+    // opens still goes to the browser.
+    void openUrl(const QUrl& url)
+    {
+        if (url.path().startsWith(QLatin1String("/s/"))) {
+            open(url.toString());
+            return;
+        }
+        QDesktopServices::unsetUrlHandler(QStringLiteral("https"));
+        QDesktopServices::openUrl(url);
+        QDesktopServices::setUrlHandler(QStringLiteral("https"), this, "openUrl");
+    }
+
+private:
+    QQmlApplicationEngine& m_engine;
+};
 
 } // namespace
 
@@ -61,13 +103,17 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // Share links (https://<domain>/s/<payload> on the web build) start the
-    // app with --share <payload>. Opening the shared board is not built yet;
-    // this is where it will hook in.
+    // Share links: the web build starts the app with --share <payload> for
+    // https://<domain>/s/<payload> (any build accepts it, with a payload or a
+    // whole link); on iOS, universal links arrive through the URL handler.
+    ShareLinks shareLinks(engine);
     const QStringList args = QCoreApplication::arguments();
     const int share = args.indexOf(QStringLiteral("--share"));
     if (share >= 0 && share + 1 < args.size())
-        qInfo("share link: %s (not supported yet)", qPrintable(args.at(share + 1)));
+        shareLinks.open(args.at(share + 1));
+#ifndef Q_OS_WASM
+    QDesktopServices::setUrlHandler(QStringLiteral("https"), &shareLinks, "openUrl");
+#endif
 
     // Development aid: --screenshot <file.png> saves the window after start-up
     // (combine with --play <Level>, --settings or --stats to open that screen).
@@ -90,5 +136,11 @@ int main(int argc, char* argv[])
             QCoreApplication::exit(g_qmlWarnings > 0 ? 1 : 0);
         });
     }
-    return app.exec();
+    const int status = app.exec();
+#ifndef Q_OS_WASM
+    QDesktopServices::unsetUrlHandler(QStringLiteral("https"));
+#endif
+    return status;
 }
+
+#include "main.moc"

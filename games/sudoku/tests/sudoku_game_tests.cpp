@@ -6,6 +6,9 @@
 #include "Stats.h"
 
 #include <sudoku/Board.h>
+#include <sudoku/Generator.h>
+#include <sudoku/Grader.h>
+#include <sudoku/Share.h>
 
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -79,6 +82,49 @@ private:
     {
         game.startNewGame(level);
         QTRY_VERIFY_WITH_TIMEOUT(game.active() && !game.loading(), 20000);
+    }
+
+    static sudoku::Grid givens(const SudokuGame& game)
+    {
+        sudoku::Grid out {};
+        for (int i = 0; i < 81; ++i)
+            if (given(game, i))
+                out[i] = static_cast<std::uint8_t>(digit(game, i));
+        return out;
+    }
+
+    // A share payload for a fixed Hard puzzle, independent of any game.
+    static QString hardPayload()
+    {
+        const auto puzzle = sudoku::generate(sudoku::Difficulty::Hard, 4);
+        sudoku::SharedBoard board;
+        board.givens = puzzle->puzzle;
+        board.level = sudoku::Difficulty::Hard;
+        return QString::fromStdString(sudoku::encodeBoard(board));
+    }
+
+    // Player digits (one wrong), corner and centre marks and colours (one on
+    // a given), so a board has every kind of progress to share.
+    static void playSome(SudokuGame& game)
+    {
+        const auto [a, b] = emptyStrangers(game);
+        QList<int> others;
+        for (int e : emptyCells(game))
+            if (e != a && e != b)
+                others.append(e);
+        game.selectOnly(others.at(0));
+        game.enter(4);
+        game.hint();
+        game.setInputMode(SudokuGame::CornerMode);
+        select(game, { a, b });
+        game.enter(1);
+        game.enter(9);
+        game.setInputMode(SudokuGame::CentreMode);
+        game.enter(2);
+        game.paint(5);
+        select(game, { firstGiven(game), b });
+        game.paint(8);
+        game.setInputMode(SudokuGame::NumberMode);
     }
 
 private slots:
@@ -743,6 +789,221 @@ private slots:
             SudokuGame game;
             QCOMPARE(game.mistakeMode(), int(SudokuGame::MistakesClashes));
         }
+    }
+
+    void newPuzzlesHaveShortCodes()
+    {
+        SudokuGame game;
+        startAndWait(game, QStringLiteral("Hard"));
+        const QString code = game.puzzleCode();
+        QCOMPARE(code.size(), 11); // "H1-" and an 8-character seed
+        QVERIFY(code.startsWith(QStringLiteral("H1-")));
+        const auto parsed = sudoku::parsePuzzleCode(code.toStdString());
+        QVERIFY(parsed);
+        QVERIFY(parsed->first == sudoku::Difficulty::Hard);
+        QVERIFY(parsed->second <= sudoku::PuzzleSeedMask);
+        // The code really names this puzzle.
+        const auto puzzle = sudoku::generate(parsed->first, parsed->second);
+        QVERIFY(puzzle);
+        QVERIFY(puzzle->puzzle == givens(game));
+    }
+
+    void codeOpensTheSamePuzzle()
+    {
+        QString code;
+        sudoku::Grid start {};
+        {
+            SudokuGame first;
+            startAndWait(first, QStringLiteral("Medium"));
+            code = first.puzzleCode();
+            start = givens(first);
+        }
+        for (int run = 0; run < 2; ++run) {
+            SudokuGame game;
+            startAndWait(game, QStringLiteral("Easy"));
+            // Typed loosely: lower case, with spaces around it.
+            QVERIFY(game.startFromCode(QStringLiteral("  ") + code.toLower() + QStringLiteral(" ")));
+            QTRY_VERIFY_WITH_TIMEOUT(game.active() && !game.loading(), 20000);
+            QCOMPARE(game.level(), QStringLiteral("Medium"));
+            QVERIFY(givens(game) == start);
+            QCOMPARE(game.puzzleCode(), code);
+            QCOMPARE(game.hintsUsed(), 0);
+            QVERIFY(!game.canUndo());
+        }
+        // The puzzle code survives a resume.
+        SudokuGame resumed;
+        QVERIFY(resumed.resume());
+        QCOMPARE(resumed.puzzleCode(), code);
+    }
+
+    void badCodesChangeNothing()
+    {
+        SudokuGame game;
+        startAndWait(game, QStringLiteral("Easy"));
+        const QVariantList before = game.cells();
+        const QString code = game.puzzleCode();
+        for (const char* bad : { "", "   ", "hello", "H1-", "H1-0000000", "Q1-00000000", "H2-00000000", "H1-0000000U",
+                 "https://sudoku.gwynant.app/s/1AAA" })
+            QVERIFY2(!game.startFromCode(QString::fromLatin1(bad)), bad);
+        QVERIFY(game.active());
+        QVERIFY(!game.loading());
+        QCOMPARE(game.cells(), before);
+        QCOMPARE(game.level(), QStringLiteral("Easy"));
+        QCOMPARE(game.puzzleCode(), code);
+    }
+
+    void shareStartingBoard()
+    {
+        SudokuGame from;
+        startAndWait(from, QStringLiteral("Hard"));
+        playSome(from);
+        const QString url = from.shareUrl(false);
+        QVERIFY(url.startsWith(QStringLiteral("https://sudoku.gwynant.app/s/1")));
+        QVERIFY(url.size() < SudokuGame::ShareUrlBase.size() + 40);
+
+        SudokuGame to;
+        QVERIFY(to.openShared(url));
+        QVERIFY(to.active());
+        QVERIFY(!to.loading());
+        QCOMPARE(to.level(), QStringLiteral("Hard"));
+        QVERIFY(givens(to) == givens(from));
+        for (int i = 0; i < 81; ++i) {
+            if (!given(to, i)) {
+                QCOMPARE(digit(to, i), 0);
+                QCOMPARE(corner(to, i), 0);
+                QCOMPARE(centre(to, i), 0);
+            }
+            QCOMPARE(colour(to, i), 0);
+        }
+        // A shared board has no seed, so no code; it can be shared on.
+        QCOMPARE(to.puzzleCode(), QString());
+        QCOMPARE(to.shareUrl(false), url);
+    }
+
+    void shareProgress()
+    {
+        SudokuGame from;
+        startAndWait(from, QStringLiteral("Expert"));
+        playSome(from);
+        const QString url = from.shareUrl(true);
+        QVERIFY(url != from.shareUrl(false));
+
+        SudokuGame to;
+        QVERIFY(to.openShared(url));
+        QCOMPARE(to.level(), QStringLiteral("Expert"));
+        QCOMPARE(to.cells(), from.cells());
+        QCOMPARE(to.hintsUsed(), 0);
+        QVERIFY(!to.canUndo());
+        QCOMPARE(to.shareUrl(true), url);
+
+        // The bare payload, and links as messaging apps mangle them.
+        const QString payload = url.mid(SudokuGame::ShareUrlBase.size());
+        for (const QString& link : { payload, QStringLiteral("  ") + url + QStringLiteral("\n"),
+                 url + QStringLiteral("/"), url + QStringLiteral("?utm_source=chat"),
+                 QStringLiteral("https://share-links.gwynant-sudoku.pages.dev/s/") + payload }) {
+            SudokuGame again;
+            QVERIFY2(again.openShared(link.trimmed()), qPrintable(link));
+            QCOMPARE(again.cells(), from.cells());
+        }
+
+        // Opened boards are autosaved like any game.
+        SudokuGame resumed;
+        QVERIFY(resumed.resume());
+        QCOMPARE(resumed.cells(), from.cells());
+        QCOMPARE(resumed.level(), QStringLiteral("Expert"));
+        QCOMPARE(resumed.puzzleCode(), QString());
+    }
+
+    void sharedBoardWithoutLevelIsGraded()
+    {
+        const auto puzzle = sudoku::generate(sudoku::Difficulty::Medium, 11);
+        sudoku::SharedBoard board;
+        board.givens = puzzle->puzzle;
+        SudokuGame game;
+        QVERIFY(game.openShared(QString::fromStdString(sudoku::encodeBoard(board))));
+        QCOMPARE(game.level(), QStringLiteral("Medium"));
+    }
+
+    void badLinksChangeNothing()
+    {
+        SudokuGame game;
+        startAndWait(game, QStringLiteral("Easy"));
+        game.selectOnly(firstEmpty(game));
+        game.enter(3);
+        const QVariantList before = game.cells();
+
+        const QString good = hardPayload();
+        // Consistent givens with many solutions.
+        sudoku::SharedBoard loose;
+        loose.givens[0] = 1;
+        loose.givens[40] = 5;
+        // Every given but one wrong digit in the middle of the solution: still
+        // consistent, but with no solution at all.
+        const auto solved = sudoku::generate(sudoku::Difficulty::Easy, 2);
+        sudoku::SharedBoard none;
+        none.givens = solved->solution;
+        for (int i : { 0, 1, 9, 10 })
+            none.givens[i] = 0;
+        std::swap(none.givens[2], none.givens[11]);
+        if (!sudoku::isConsistent(none.givens))
+            none.givens = loose.givens;
+
+        const QStringList bad = {
+            QString(),
+            QStringLiteral("   "),
+            QStringLiteral("not a payload"),
+            QStringLiteral("2") + good.mid(1), // unknown format version
+            good.chopped(3),
+            good + QStringLiteral("A"),
+            QStringLiteral("https://sudoku.gwynant.app/"),
+            QStringLiteral("https://sudoku.gwynant.app/s/"),
+            QStringLiteral("https://sudoku.gwynant.app/x/") + good,
+            QStringLiteral("https://sudoku.gwynant.app/s/") + good + QStringLiteral("/more"),
+            QStringLiteral("H1-00000000"),
+            QString::fromStdString(sudoku::encodeBoard(loose)),
+            QString::fromStdString(sudoku::encodeBoard(none)),
+        };
+        for (const QString& link : bad)
+            QVERIFY2(!game.openShared(link), qPrintable(link));
+        QVERIFY(game.active());
+        QCOMPARE(game.level(), QStringLiteral("Easy"));
+        QCOMPARE(game.cells(), before);
+        QVERIFY(game.canUndo());
+    }
+
+    void openSharedReplacesTheGame()
+    {
+        SudokuGame game;
+        startAndWait(game, QStringLiteral("Easy"));
+        game.hint();
+        QCOMPARE(game.hintsUsed(), 1);
+        QSignalSpy started(&game, &GameSession::stateChanged);
+        QVERIFY(game.openShared(hardPayload()));
+        QCOMPARE(game.level(), QStringLiteral("Hard"));
+        QCOMPARE(game.hintsUsed(), 0);
+        QCOMPARE(game.elapsedSeconds(), 0);
+        QVERIFY(!game.canUndo());
+        QVERIFY(started.count() > 0);
+        const auto easy = Stats::forLevel(QStringLiteral("sudoku"), QStringLiteral("Easy"));
+        const auto hard = Stats::forLevel(QStringLiteral("sudoku"), QStringLiteral("Hard"));
+        QCOMPARE(easy.value(QStringLiteral("played")).toInt(), 1);
+        QCOMPARE(hard.value(QStringLiteral("played")).toInt(), 1);
+    }
+
+    void openSharedWhileAPuzzleLoads()
+    {
+        SudokuGame game;
+        game.startNewGame(QStringLiteral("Expert")); // the buffers are still empty
+        QVERIFY(game.loading());
+        QVERIFY(game.openShared(hardPayload()));
+        QVERIFY(!game.loading());
+        QVERIFY(game.active());
+        QCOMPARE(game.level(), QStringLiteral("Hard"));
+        const sudoku::Grid shared = givens(game);
+        // The Expert puzzle that finishes later goes to the buffer instead.
+        QTest::qWait(1500);
+        QCOMPARE(game.level(), QStringLiteral("Hard"));
+        QVERIFY(givens(game) == shared);
     }
 
     void padLayoutIsClampedAndPersisted()

@@ -44,4 +44,64 @@ void haptic(const QString& event, qreal scale)
     }
 }
 
+namespace {
+
+// The view controller on top: the root of the foreground window, or whatever
+// it is presenting (a share sheet already open, say).
+UIViewController* topViewController()
+{
+    UIWindow* window = nil;
+    for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:[UIWindowScene class]])
+            continue;
+        for (UIWindow* candidate in ((UIWindowScene*)scene).windows) {
+            if (candidate.isKeyWindow) {
+                window = candidate;
+                break;
+            }
+            if (!window)
+                window = candidate;
+        }
+        if (window && window.isKeyWindow)
+            break;
+    }
+    UIViewController* top = window.rootViewController;
+    while (top.presentedViewController)
+        top = top.presentedViewController;
+    return top;
+}
+
+} // namespace
+
+void share(const QString& text, const QRectF& anchor, const std::function<void()>& copied)
+{
+    UIViewController* top = topViewController();
+    if (!top) {
+        copyToClipboard(text);
+        if (copied)
+            copied();
+        return;
+    }
+    UIActivityViewController* sheet = [[UIActivityViewController alloc]
+        initWithActivityItems:@[ text.toNSString() ]
+        applicationActivities:nil];
+    // iPad shows the sheet as a popover, which needs something to point at:
+    // the button that asked, or the middle of the screen.
+    if (UIPopoverPresentationController* popover = sheet.popoverPresentationController) {
+        UIView* view = top.view;
+        popover.sourceView = view;
+        popover.sourceRect = anchor.isValid()
+            ? anchor.toCGRect()
+            : CGRectMake(CGRectGetMidX(view.bounds), CGRectGetMidY(view.bounds), 0, 0);
+        if (!anchor.isValid())
+            popover.permittedArrowDirections = 0;
+    }
+    [top presentViewController:sheet animated:YES completion:nil];
+}
+
+void copyToClipboard(const QString& text)
+{
+    UIPasteboard.generalPasteboard.string = text.toNSString();
+}
+
 } // namespace calm::platform

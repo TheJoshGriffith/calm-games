@@ -2,9 +2,12 @@
 
 #include <sudoku/Board.h>
 #include <sudoku/Grader.h>
+#include <sudoku/Share.h>
+#include <sudoku/Solver.h>
 
 #include <QRandomGenerator>
 #include <QSet>
+#include <QUrl>
 
 #if CALM_SUDOKU_THREADED_GENERATION
 #include <QtConcurrent/QtConcurrentRun>
@@ -49,6 +52,29 @@ const QString kPadWidth = QStringLiteral("sudoku/padWidth");
 const QString kPadOffset = QStringLiteral("sudoku/padOffset");
 // The boolean option this replaced: true meant "compare with the answer".
 const QString kLegacyShowMistakes = QStringLiteral("sudoku/showMistakes");
+
+QString levelName(Difficulty difficulty)
+{
+    return QString::fromUtf8(sudoku::difficultyName(difficulty).data());
+}
+
+// The payload of a share link, from the whole URL (any host, so preview
+// deployments work too) or the bare payload.
+QString sharePayload(const QString& link)
+{
+    const QString text = link.trimmed();
+    if (text.contains(QLatin1String("://"))) {
+        const QUrl url(text);
+        const QString path = url.path();
+        if (!url.isValid() || !path.startsWith(QLatin1String("/s/")))
+            return {};
+        QString payload = path.mid(3);
+        while (payload.endsWith(QLatin1Char('/')))
+            payload.chop(1);
+        return payload.contains(QLatin1Char('/')) ? QString() : payload;
+    }
+    return text.contains(QLatin1Char('/')) ? QString() : text;
+}
 
 // Snapshot layout: entries, corner marks (2 bytes each), centre marks
 // (2 bytes each), colours, then the completion count.
@@ -174,6 +200,101 @@ void SudokuGame::setFocusDigit(int digit)
 QString SudokuGame::technique() const
 {
     return QString::fromUtf8(sudoku::techniqueName(m_board.hardest).data());
+}
+
+QString SudokuGame::puzzleCode() const
+{
+    if (!active() || !m_board.seedKnown)
+        return {};
+    const auto difficulty = sudoku::parseDifficulty(level().toStdString());
+    if (!difficulty)
+        return {};
+    return QString::fromStdString(sudoku::puzzleCode(*difficulty, m_board.seed));
+}
+
+QString SudokuGame::shareUrl(bool withProgress) const
+{
+    if (!active())
+        return {};
+    sudoku::SharedBoard shared;
+    shared.givens = m_board.puzzle;
+    shared.level = sudoku::parseDifficulty(level().toStdString());
+    if (withProgress) {
+        for (int i = 0; i < 81; ++i) {
+            shared.colour[i] = m_board.colours[i];
+            if (isGiven(i))
+                continue;
+            shared.entries[i] = m_board.entries[i];
+            // Marks under a digit aren't shown, so they aren't shared.
+            if (m_board.entries[i] == 0) {
+                shared.corner[i] = m_board.corner[i];
+                shared.centre[i] = m_board.centre[i];
+            }
+        }
+    }
+    return ShareUrlBase + QString::fromStdString(sudoku::encodeBoard(shared));
+}
+
+bool SudokuGame::openShared(const QString& link)
+{
+    const QString payload = sharePayload(link);
+    if (payload.isEmpty())
+        return false;
+    const auto shared = sudoku::decodeBoard(payload.toStdString());
+    if (!shared || sudoku::countSolutions(shared->givens, 2) != 1)
+        return false;
+    const auto solution = sudoku::solve(shared->givens);
+    if (!solution)
+        return false;
+
+    const sudoku::GradeResult graded = sudoku::grade(shared->givens);
+    const Difficulty difficulty = shared->level ? *shared->level : graded.difficulty().value_or(Difficulty::Expert);
+
+    Board board;
+    board.puzzle = shared->givens;
+    board.solution = *solution;
+    board.hardest = graded.hardest;
+    // A board that is already solved would be a game with nothing left to
+    // do, so it opens at the start instead.
+    bool solved = true;
+    for (int i = 0; i < 81 && solved; ++i)
+        solved = (board.puzzle[i] ? board.puzzle[i] : shared->entries[i]) == board.solution[i];
+    if (!solved) {
+        board.entries = shared->entries;
+        board.corner = shared->corner;
+        board.centre = shared->centre;
+        board.colours = shared->colour;
+    }
+
+    if (loading()) {
+        stopWaiting();
+        cancelNewGame();
+    }
+    m_pendingBoard = board;
+    startNewGame(levelName(difficulty));
+    m_pendingBoard.reset();
+    return true;
+}
+
+bool SudokuGame::startFromCode(const QString& code)
+{
+    const auto parsed = sudoku::parsePuzzleCode(code.toStdString());
+    if (!parsed)
+        return false;
+    if (loading()) {
+        stopWaiting();
+        cancelNewGame();
+    }
+    m_pendingSeed = parsed->second;
+    startNewGame(levelName(parsed->first));
+    m_pendingSeed.reset();
+    return true;
+}
+
+void SudokuGame::stopWaiting()
+{
+    m_waitingFor.reset();
+    m_waitingSeed.reset();
 }
 
 int SudokuGame::mistakeMode() const
@@ -479,8 +600,30 @@ void SudokuGame::afterPlacement(const QList<int>& cells)
 
 void SudokuGame::createGame(const QString& level)
 {
+    if (m_pendingBoard) {
+        startWith(*std::exchange(m_pendingBoard, std::nullopt));
+        return;
+    }
     const Difficulty difficulty = sudoku::parseDifficulty(level.toStdString()).value_or(Difficulty::Medium);
     auto& queue = m_buffer[int(difficulty)];
+    stopWaiting();
+
+    // A typed code: that exact puzzle, from the buffer if it happens to be
+    // there, else generated now ahead of anything else.
+    if (const auto seed = std::exchange(m_pendingSeed, std::nullopt)) {
+        for (qsizetype i = 0; i < queue.size(); ++i) {
+            if (queue.at(i).seed == *seed) {
+                startWith(queue.takeAt(i));
+                requestPuzzle(difficulty);
+                return;
+            }
+        }
+        m_waitingFor = difficulty;
+        m_waitingSeed = *seed;
+        generate(difficulty, *seed);
+        return;
+    }
+
     if (!queue.isEmpty()) {
         startWith(queue.takeFirst());
         requestPuzzle(difficulty);
@@ -499,17 +642,21 @@ void SudokuGame::requestPuzzle(Difficulty difficulty)
     const int key = int(difficulty);
     if (m_buffer.value(key).size() + m_inFlight.value(key) >= BufferSize)
         return;
-    ++m_inFlight[key];
+    // Seeds below 2^40 keep puzzle codes to 8 characters after the level.
+    generate(difficulty, QRandomGenerator::global()->generate64() & sudoku::PuzzleSeedMask);
+}
 
-    const quint64 seed = QRandomGenerator::global()->generate64();
+void SudokuGame::generate(Difficulty difficulty, quint64 seed)
+{
+    ++m_inFlight[int(difficulty)];
 #if CALM_SUDOKU_THREADED_GENERATION
     auto* watcher = new QFutureWatcher<std::optional<sudoku::Puzzle>>(this);
     m_watchers.append(watcher);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, difficulty] {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, difficulty, seed] {
         m_watchers.removeOne(watcher);
         const auto puzzle = watcher->result();
         watcher->deleteLater();
-        onPuzzleReady(difficulty, puzzle);
+        onPuzzleReady(difficulty, seed, puzzle);
     });
     watcher->setFuture(QtConcurrent::run([difficulty, seed] { return sudoku::generate(difficulty, seed); }));
 #else
@@ -540,29 +687,36 @@ void SudokuGame::generateNext()
     qsizetype next = 0;
     if (m_waitingFor) {
         for (qsizetype i = 0; i < m_pending.size(); ++i) {
-            if (m_pending.at(i).first == *m_waitingFor) {
+            const auto& [difficulty, seed] = m_pending.at(i);
+            if (difficulty == *m_waitingFor && (!m_waitingSeed || *m_waitingSeed == seed)) {
                 next = i;
                 break;
             }
         }
     }
     const auto [difficulty, seed] = m_pending.takeAt(next);
-    onPuzzleReady(difficulty, sudoku::generate(difficulty, seed));
+    onPuzzleReady(difficulty, seed, sudoku::generate(difficulty, seed));
     scheduleGeneration();
 }
 #endif
 
-void SudokuGame::onPuzzleReady(Difficulty difficulty, const std::optional<sudoku::Puzzle>& puzzle)
+void SudokuGame::onPuzzleReady(Difficulty difficulty, quint64 seed, const std::optional<sudoku::Puzzle>& puzzle)
 {
     const int key = int(difficulty);
     --m_inFlight[key];
+    const bool wanted = m_waitingFor == difficulty && (!m_waitingSeed || *m_waitingSeed == seed);
     if (puzzle) {
-        if (m_waitingFor == difficulty) {
-            m_waitingFor.reset();
+        if (wanted) {
+            stopWaiting();
             startWith(*puzzle);
         } else {
             m_buffer[key].append(*puzzle);
         }
+    } else if (wanted && m_waitingSeed) {
+        // A code whose seed never reaches its level: nothing to start.
+        stopWaiting();
+        cancelNewGame();
+        emit codeFailed();
     }
     requestPuzzle(difficulty);
 }
@@ -576,11 +730,18 @@ void SudokuGame::resetInput()
 
 void SudokuGame::startWith(const sudoku::Puzzle& puzzle)
 {
-    m_board = {};
-    m_board.puzzle = puzzle.puzzle;
-    m_board.solution = puzzle.solution;
-    m_board.hardest = puzzle.hardest;
-    m_board.seed = puzzle.seed;
+    Board board;
+    board.puzzle = puzzle.puzzle;
+    board.solution = puzzle.solution;
+    board.hardest = puzzle.hardest;
+    board.seed = puzzle.seed;
+    board.seedKnown = true;
+    startWith(board);
+}
+
+void SudokuGame::startWith(const Board& board)
+{
+    m_board = board;
     setSelected(-1);
     resetInput();
     beginGame();
@@ -596,7 +757,8 @@ QVariantMap SudokuGame::saveState() const
     state.insert(QStringLiteral("centre"), masksToList(m_board.centre));
     state.insert(QStringLiteral("colours"), gridToString(m_board.colours));
     state.insert(QStringLiteral("hardest"), int(m_board.hardest));
-    state.insert(QStringLiteral("seed"), QString::number(m_board.seed));
+    if (m_board.seedKnown)
+        state.insert(QStringLiteral("seed"), QString::number(m_board.seed));
     state.insert(QStringLiteral("completions"), m_board.completions);
     state.insert(QStringLiteral("selected"), selected());
     state.insert(QStringLiteral("selection"), selection());
@@ -630,6 +792,8 @@ bool SudokuGame::restoreState(const QVariantMap& state)
     }
     board.hardest = static_cast<sudoku::Technique>(
         std::clamp(state.value(QStringLiteral("hardest")).toInt(), 0, sudoku::TechniqueCount - 1));
+    // Boards opened from a share link have no seed (and so no puzzle code).
+    board.seedKnown = state.contains(QStringLiteral("seed"));
     board.seed = state.value(QStringLiteral("seed")).toString().toULongLong();
     board.completions = state.value(QStringLiteral("completions")).toInt();
     m_board = board;

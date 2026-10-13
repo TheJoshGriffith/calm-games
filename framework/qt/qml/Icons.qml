@@ -14,4 +14,7 @@ QtObject {
     readonly property string stats: "M5 20V11M12 20V4M19 20v-6"
     readonly property string pause: "M9 5v14M15 5v14"
     readonly property string play: "M7 4l12 8-12 8z"
+    readonly property string share: "M12 3v12M8 7l4-4 4 4M9 10H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-3"
+    readonly property string copy: "M9 9h10v11H9zM5 15V4h10"
+    readonly property string code: "M5 9h14M5 15h14M10 4L8 20M16 4l-2 16"
 }
