@@ -11,21 +11,27 @@ will follow on the same framework.
 
 ```
 framework/core/        Shared, game-agnostic C++ (deterministic RNG, undo stack)
+framework/qt/          QML module "Calm": app shell, theme, components, sounds,
+                       haptics, settings, saving, stats, GameSession base class
 games/sudoku/engine/   Pure C++ Sudoku engine: board, solver, generator, grader, hints
-games/sudoku/tests/    Engine tests (run by CTest)
+games/sudoku/app/      The Sudoku app (SudokuGame session + QML screens)
+games/sudoku/tests/    Engine tests and session tests (run by CTest)
 tools/sudoku-gen/      Command-line puzzle generator and grader
+tools/make_sounds.py   Synthesises the framework's sound set
 ```
 
-The Qt/QML app shell, theming, sounds and saving arrive in the next milestone.
+See [docs/FRAMEWORK.md](docs/FRAMEWORK.md) for how games plug into the framework.
 
 ## Building
 
-Requires CMake 3.21+ and a C++20 compiler. The engine has no other dependencies.
+Requires CMake 3.21+ and a C++20 compiler. The engines have no other
+dependencies; the apps need Qt 6.4+ (6.8 LTS recommended) with Qt Multimedia.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-ctest --test-dir build --output-on-failure
+QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+./build/games/sudoku/app/CalmSudoku
 ```
 
 Generate puzzles:
@@ -54,4 +60,6 @@ The same logical solver powers hints.
 
 ## Licence
 
-GPL-3.0-or-later. See [LICENSE](LICENSE). Qt is used under the LGPLv3.
+GPL-3.0-or-later. See [LICENSE](LICENSE). Qt is used under the LGPLv3. The
+Nunito font is under the SIL Open Font License (`framework/qt/fonts/OFL.txt`).
+The sounds are synthesised by `tools/make_sounds.py` and are part of this project.
