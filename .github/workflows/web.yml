@@ -115,6 +115,9 @@ jobs:
           || { grep -E "error:|Error |undefined symbol" build.log | head -n 30 | sed 's/^/::error::/'; exit 1; }
 
       - name: Assemble site
+        env:
+          # Names the iOS app in /.well-known/apple-app-site-association.
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           python3 tools/web/make-site.py --build-dir build-wasm --game ${{ matrix.name }} --out site --build-id "${GITHUB_SHA::12}"
           wasm=site/${{ matrix.target }}.wasm

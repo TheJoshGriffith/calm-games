@@ -67,5 +67,8 @@ if(IOS)
         XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "16.0"
         XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic
         XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${CALM_APPLE_TEAM_ID}"
+        # Universal Links. CI archives unsigned, so ios.yml applies this file
+        # to the archived app before the export signs it.
+        XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/ios/app.entitlements"
     )
 endif()
