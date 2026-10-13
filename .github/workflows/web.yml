@@ -97,6 +97,13 @@ jobs:
       - name: Smoke test in headless Chromium
         run: node games/sudoku/app/web/smoke.mjs site screens
 
+      - name: TEMP diagnostics
+        if: always()
+        run: |
+          grep -n "arguments\|environment\|module\|entryFunction\|onExit\|onLoaded" site/qtloader.js | head -60 || true
+          grep -o "[A-Za-z_]*_entry" site/CalmSudoku.js | sort -u | head || true
+          if [ -f screens/sudoku-web.png ]; then echo "BEGIN-PNG"; base64 -w 200 screens/sudoku-web.png; echo "END-PNG"; fi
+
       - name: Upload site
         if: always()
         uses: actions/upload-artifact@v4

@@ -180,7 +180,8 @@
             arguments: appArguments(),
             qt: {
               module: Promise.resolve(module),
-              entryFunction: window.createQtAppInstance,
+              // Qt 6.8 names the Emscripten factory <target>_entry.
+              entryFunction: window.CalmSudoku_entry || window.createQtAppInstance,
               containerElements: [screen],
               environment: environment,
               onLoaded: () => {
