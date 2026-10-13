@@ -10,8 +10,8 @@ Item {
     signal settingsRequested()
 
     readonly property var levels: [
-        { name: "Gentle", hint: qsTr("Endless balls, play at your own pace"), dots: 1 },
-        { name: "Classic", hint: qsTr("Three balls, chase your best"), dots: 2 }
+        { name: "Gentle", hint: qsTr("Endless balls, stage after stage"), dots: 1 },
+        { name: "Classic", hint: qsTr("Three balls. Clear stages for more"), dots: 2 }
     ]
 
     Rectangle {

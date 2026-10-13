@@ -27,7 +27,7 @@ CalmPage {
         onClicked: page.settingsRequested()
     }
 
-    // Balls, multiplier and lane lights.
+    // The stage goal on the left; balls and multiplier on the right.
     Item {
         id: scoreboard
         anchors.top: parent.top
@@ -38,38 +38,75 @@ CalmPage {
         Row {
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 6
-            visible: !page.game.endless
-            Accessible.name: qsTr("%n ball(s) left", "", page.game.ballsLeft)
-            Repeater {
-                model: 3
-                Rectangle {
-                    required property int index
-                    width: 10
-                    height: 10
-                    radius: 5
-                    color: index < page.game.ballsLeft ? Theme.ink : Theme.line
-                    Behavior on color { ColorAnimation { duration: Theme.gentle } }
+            spacing: 8
+            Accessible.role: Accessible.StaticText
+            Accessible.name: qsTr("Stage %1: %2 of %3 stars").arg(page.game.stage).arg(page.game.stageStars).arg(page.game.starsNeeded)
+                             + (page.game.bankNeeded ? (page.game.bankDone ? qsTr(", bank cleared") : qsTr(", clear the bank")) : "")
+
+            CalmText {
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Stage %1").arg(page.game.stage)
+                font.weight: Font.Bold
+            }
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+                Repeater {
+                    model: page.game.starsNeeded
+                    CalmText {
+                        required property int index
+                        text: "★"
+                        font.pixelSize: 15
+                        color: index < page.game.stageStars ? Theme.entry : Theme.trackOff
+                        Behavior on color { ColorAnimation { duration: Theme.gentle } }
+                    }
+                }
+            }
+            // The bank, when this stage asks for it: three small bars.
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: page.game.bankNeeded
+                spacing: 2
+                Repeater {
+                    model: 3
+                    Rectangle {
+                        width: 6
+                        height: 3
+                        radius: 1.5
+                        color: page.game.bankDone ? Theme.entry : Theme.trackOff
+                        Behavior on color { ColorAnimation { duration: Theme.gentle } }
+                    }
                 }
             }
         }
 
-        CalmText {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            visible: page.game.endless
-            text: qsTr("Best %1").arg(page.formatScore(Math.max(page.game.best, page.game.score)))
-            color: Theme.muted
-            font.pixelSize: 14
-        }
-
-        CalmText {
+        Row {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: "×" + page.game.multiplier
-            font.weight: Font.Bold
-            color: page.game.multiplier > 1 ? Theme.accent : Theme.muted
-            Behavior on color { ColorAnimation { duration: Theme.gentle } }
+            spacing: 10
+
+            Row {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 5
+                visible: !page.game.endless
+                Accessible.name: qsTr("%n ball(s) left", "", page.game.ballsLeft)
+                Repeater {
+                    model: page.game.ballsLeft
+                    Rectangle {
+                        width: 9
+                        height: 9
+                        radius: 4.5
+                        color: Theme.ink
+                    }
+                }
+            }
+            CalmText {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "×" + page.game.multiplier
+                font.weight: Font.Bold
+                color: page.game.multiplier > 1 ? Theme.accent : Theme.muted
+                Behavior on color { ColorAnimation { duration: Theme.gentle } }
+            }
         }
     }
 
@@ -91,7 +128,7 @@ CalmPage {
         anchors.right: parent.right
         horizontalAlignment: Text.AlignHCenter
         text: page.game.ballReady ? qsTr("Hold the right side, then let go to launch")
-                                  : qsTr("Touch left or right to flip")
+                                  : qsTr("Catch the stars to finish the stage")
         color: Theme.muted
         font.pixelSize: 14
     }
@@ -105,6 +142,7 @@ CalmPage {
         width: parent.width / 2
         PointHandler {
             id: leftTouch
+            acceptedDevices: PointerDevice.TouchScreen | PointerDevice.Stylus
             onActiveChanged: page.game.setFlipper(0, active)
         }
     }
@@ -115,6 +153,7 @@ CalmPage {
         width: parent.width / 2
         PointHandler {
             id: rightTouch
+            acceptedDevices: PointerDevice.TouchScreen | PointerDevice.Stylus
             property bool launching: false
             onActiveChanged: {
                 if (active) {
@@ -130,6 +169,50 @@ CalmPage {
                     page.game.setFlipper(1, false)
                 }
             }
+        }
+    }
+
+    // With a mouse, the left button works the left flipper and the right
+    // button the right one (holding it launches a waiting ball).
+    MouseArea {
+        anchors.top: scoreboard.top
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        property bool launching: false
+        onPressed: (mouse) => {
+            // Touches are handled by the screen halves above, not here.
+            if (mouse.source !== Qt.MouseEventNotSynthesized) {
+                mouse.accepted = false
+                return
+            }
+            if (mouse.button === Qt.LeftButton) {
+                page.game.setFlipper(0, true)
+            } else {
+                launching = page.game.ballReady
+                if (launching)
+                    page.game.setPlunger(true)
+                else
+                    page.game.setFlipper(1, true)
+            }
+        }
+        onReleased: (mouse) => {
+            if (mouse.button === Qt.LeftButton) {
+                page.game.setFlipper(0, false)
+            } else if (launching) {
+                page.game.setPlunger(false)
+                launching = false
+            } else {
+                page.game.setFlipper(1, false)
+            }
+        }
+        onCanceled: {
+            page.game.setFlipper(0, false)
+            page.game.setFlipper(1, false)
+            if (launching)
+                page.game.setPlunger(false)
+            launching = false
         }
     }
 
@@ -187,9 +270,10 @@ CalmPage {
             CalmText {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
-                text: page.game.score >= page.game.best && page.game.score > 0
-                      ? qsTr("%1 · a new best").arg(page.formatScore(page.game.score))
-                      : qsTr("%1 · best %2").arg(page.formatScore(page.game.score)).arg(page.formatScore(page.game.best))
+                text: (page.game.score >= page.game.best && page.game.score > 0
+                       ? qsTr("%1 · a new best").arg(page.formatScore(page.game.score))
+                       : qsTr("%1 · best %2").arg(page.formatScore(page.game.score)).arg(page.formatScore(page.game.best)))
+                      + "\n" + qsTr("You reached stage %1").arg(page.game.stage)
                 color: Theme.muted
             }
             Item { width: 1; height: 12 }

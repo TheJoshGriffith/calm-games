@@ -91,6 +91,8 @@ void unattendedBallDrains()
     t.launch(0.5);
     std::vector<Event> events;
     for (int i = 0; i < 60 * 120 && t.drained() == 0; ++i) {
+        if (t.ballReady())
+            t.launch(0.5); // again, if the ball save sent it back
         t.step(Frame);
         for (const auto& e : t.takeEvents())
             events.push_back(e);
@@ -108,15 +110,15 @@ void flipperSendsTheBallUpTheTable()
     for (int i = 0; i < 12; ++i)
         t.step(Frame);
     t.setFlipper(Side::Left, true);
-    double highest = t.ball().position.y;
+    double fastestUp = 0;
     bool struck = false;
     for (int i = 0; i < 120; ++i) {
         t.step(Frame);
-        highest = std::min(highest, t.ball().position.y);
+        fastestUp = std::min(fastestUp, t.ball().velocity.y);
         struck = struck || count(t.takeEvents(), EventType::Flipper) > 0;
     }
     CHECK(struck);
-    CHECK(highest < 60);
+    CHECK(fastestUp < -200); // a real shot, up into the drop targets
 }
 
 void raisedFlipperCradlesTheBall()
@@ -210,17 +212,188 @@ void endlessNeverEnds()
 void restoreRoundTrips()
 {
     Table t(Mode::Classic);
-    t.restore(12345, 3, 2, 1, 0b101);
-    CHECK(t.score() == 12345);
-    CHECK(t.multiplier() == 3);
-    CHECK(t.ballsLeft() == 2);
-    CHECK(t.drained() == 1);
-    CHECK(t.litMask() == 0b101);
+    Progress saved;
+    saved.score = 12345;
+    saved.multiplier = 3;
+    saved.ballsLeft = 2;
+    saved.drained = 1;
+    saved.lit = 0b101;
+    saved.stage = 3;
+    saved.stageStars = 2;
+    saved.stageBank = true;
+    t.restore(saved);
+    const Progress p = t.progress();
+    CHECK(p.score == 12345);
+    CHECK(p.multiplier == 3);
+    CHECK(p.ballsLeft == 2);
+    CHECK(p.drained == 1);
+    CHECK(p.lit == 0b101);
+    CHECK(p.stage == 3);
+    CHECK(p.stageStars == 2);
+    CHECK(p.stageBank);
     CHECK(t.ballReady());
-    t.restore(-5, 99, 99, -1, 0);
+
+    Progress bad;
+    bad.score = -5;
+    bad.multiplier = 99;
+    bad.ballsLeft = 99;
+    bad.stage = -2;
+    bad.stageStars = 99;
+    t.restore(bad);
     CHECK(t.score() == 0);
     CHECK(t.multiplier() == 5);
+    CHECK(t.ballsLeft() == Table::MaxBalls);
+    CHECK(t.stage() == 1);
+    CHECK(t.stageStars() == Table::goalFor(1).stars);
+}
+
+void starSpotsAreOpenFelt()
+{
+    Table t(Mode::Endless);
+    CHECK(t.starSpots().size() > 40);
+    for (const Vec2 p : t.starSpots()) {
+        CHECK(p.x > 11 && p.x < t.laneLeft());
+        for (const auto& b : t.bumpers())
+            CHECK((p - b.centre).length() > b.radius + 5);
+    }
+}
+
+void starsAppearAndCanBeCollected()
+{
+    Table t(Mode::Endless, 5);
+    t.launch(0.5);
+    std::vector<Event> events;
+    for (int i = 0; i < 60 * 4; ++i) {
+        t.step(Frame);
+        for (const auto& e : t.takeEvents())
+            events.push_back(e);
+    }
+    CHECK(count(events, EventType::StarAppeared) >= 1);
+
+    // Roll the ball through an active star.
+    int slot = -1;
+    for (int s = 0; s < Table::StarSlots; ++s)
+        if (t.stars()[s].active)
+            slot = s;
+    CHECK(slot >= 0);
+    if (slot < 0)
+        return;
+    const long long before = t.score();
+    t.placeBall(t.stars()[slot].centre + Vec2 { 0, -5 }, { 0, 40 });
+    events.clear();
+    for (int i = 0; i < 10; ++i) {
+        t.step(Frame);
+        for (const auto& e : t.takeEvents())
+            events.push_back(e);
+    }
+    CHECK(count(events, EventType::Star) == 1);
+    CHECK(!t.stars()[slot].active);
+    CHECK(t.stageStars() == 1);
+    CHECK(t.score() >= before + 500);
+}
+
+void unreachedStarsFade()
+{
+    Table t(Mode::Endless, 2);
+    t.setFlipper(Side::Left, true);
+    t.step(0.2);
+    t.placeBall({ 40, 120 }, { 0, 0 }); // cradled, far from any star
+    t.spawnStar(0);
+    CHECK(t.stars()[0].active);
+    const double life = t.stars()[0].life;
+    for (int i = 0; i < int(60 * (life + 1)); ++i)
+        t.step(Frame);
+    // The first star faded; others may have appeared since, but not in its place
+    // without a fresh spawn resetting its age.
+    CHECK(!t.stars()[0].active || t.stars()[0].age < life);
+}
+
+void dropBankClearsAndResets()
+{
+    Table t(Mode::Endless);
+    std::vector<Event> events;
+    for (const auto& d : std::vector<DropTarget>(t.dropTargets())) {
+        const Vec2 mid = (d.a + d.b) * 0.5;
+        t.placeBall(mid + Vec2 { 0, 6 }, { 0, -80 });
+        for (int i = 0; i < 6; ++i) {
+            t.step(Frame);
+            for (const auto& e : t.takeEvents())
+                events.push_back(e);
+        }
+    }
+    CHECK(count(events, EventType::DropTarget) == 3);
+    CHECK(count(events, EventType::BankCleared) == 1);
+    CHECK(t.stageBank());
+    for (const auto& d : t.dropTargets())
+        CHECK(d.down);
+    t.placeBall({ 20, 60 }, { 0, 0 });
+    for (int i = 0; i < 120; ++i)
+        t.step(Frame);
+    for (const auto& d : t.dropTargets())
+        CHECK(!d.down);
+}
+
+void standingTargetsBlockTheBall()
+{
+    Table t(Mode::Endless);
+    const auto d = t.dropTargets()[1];
+    t.placeBall((d.a + d.b) * 0.5 + Vec2 { 0, 8 }, { 0, -100 });
+    t.step(Frame * 3);
+    CHECK(t.ball().velocity.y > -100); // knocked back, not passed through
+    CHECK(t.ball().position.y > d.a.y);
+}
+
+void stagesNeedStarsThenTheBank()
+{
+    CHECK(Table::goalFor(1).stars == 3 && !Table::goalFor(1).bank);
+    CHECK(Table::goalFor(2).stars == 4 && Table::goalFor(2).bank);
+    CHECK(Table::goalFor(20).stars == 8);
+
+    Table t(Mode::Classic);
+    Progress p;
+    p.stageStars = 2;
+    t.restore(p);
+    t.launch(0);
+    t.spawnStar(0);
+    int slot = -1;
+    for (int s = 0; s < Table::StarSlots; ++s)
+        if (t.stars()[s].active)
+            slot = s;
+    CHECK(slot >= 0);
+    if (slot < 0)
+        return;
+    t.placeBall(t.stars()[slot].centre + Vec2 { 0, -5 }, { 0, 40 });
+    std::vector<Event> events;
+    for (int i = 0; i < 10; ++i) {
+        t.step(Frame);
+        for (const auto& e : t.takeEvents())
+            events.push_back(e);
+    }
+    CHECK(count(events, EventType::StageComplete) == 1);
+    CHECK(count(events, EventType::ExtraBall) == 1);
+    CHECK(t.stage() == 2);
+    CHECK(t.stageStars() == 0);
+    CHECK(t.ballsLeft() == 4);
+    CHECK(t.score() >= 2500);
+}
+
+void classicSavesAnEarlyDrain()
+{
+    Table t(Mode::Classic);
+    t.launch(0.5);
+    t.step(0.5);
+    CHECK(t.ballSave() > 0);
+    t.placeBall({ 50, 175 }, { 0, 60 });
+    std::vector<Event> events;
+    for (int i = 0; i < 20; ++i) {
+        t.step(Frame);
+        for (const auto& e : t.takeEvents())
+            events.push_back(e);
+    }
+    CHECK(count(events, EventType::BallSaved) == 1);
+    CHECK(count(events, EventType::Drain) == 0);
     CHECK(t.ballsLeft() == 3);
+    CHECK(t.ballReady());
 }
 
 // Long random sessions: the ball never leaves the table or sticks anywhere.
@@ -288,6 +461,13 @@ int main()
         { "classicEndsAfterThreeBalls", classicEndsAfterThreeBalls },
         { "endlessNeverEnds", endlessNeverEnds },
         { "restoreRoundTrips", restoreRoundTrips },
+        { "starSpotsAreOpenFelt", starSpotsAreOpenFelt },
+        { "starsAppearAndCanBeCollected", starsAppearAndCanBeCollected },
+        { "unreachedStarsFade", unreachedStarsFade },
+        { "dropBankClearsAndResets", dropBankClearsAndResets },
+        { "standingTargetsBlockTheBall", standingTargetsBlockTheBall },
+        { "stagesNeedStarsThenTheBank", stagesNeedStarsThenTheBank },
+        { "classicSavesAnEarlyDrain", classicSavesAnEarlyDrain },
         { "randomPlayStaysOnTheTable", randomPlayStaysOnTheTable },
         { "sameSeedSameGame", sameSeedSameGame },
     };
