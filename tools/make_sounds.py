@@ -89,7 +89,23 @@ def mix(parts, duration):
     return out
 
 
+def trim_tail(samples, floor_db=-54, fade=0.03):
+    """Drops the inaudible end of a reverb tail (everything after the signal last
+    rises above `floor_db` relative to its peak), with a short fade. Keeps the
+    files, and so the web download, small without changing what is heard."""
+    peak = max(1e-9, max(abs(s) for s in samples))
+    threshold = peak * 10 ** (floor_db / 20)
+    last = max((i for i, s in enumerate(samples) if abs(s) > threshold), default=len(samples) - 1)
+    end = min(len(samples), last + 1 + int(fade * RATE))
+    out = samples[:end]
+    n = min(int(fade * RATE), len(out))
+    for i in range(n):
+        out[len(out) - 1 - i] *= i / n
+    return out
+
+
 def write(path, samples, gain):
+    samples = trim_tail(list(samples))
     peak = max(1e-9, max(abs(s) for s in samples))
     scale = gain * 0.9 / peak
     with wave.open(str(path), "wb") as w:

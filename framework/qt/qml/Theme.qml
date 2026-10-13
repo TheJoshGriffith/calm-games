@@ -21,6 +21,8 @@ QtObject {
     readonly property color selection: dark ? "#2F5050" : "#CFE5E1"
     readonly property color match: dark ? "#26403F" : "#DDEBE8"
     readonly property color peer: dark ? "#222F35" : "#EEF3F2"
+    // Shades cells a highlighted value can't go in, leaving open ones clear.
+    readonly property color blocked: dark ? "#2C3A42" : "#E3E9EB"
     readonly property color entry: dark ? "#8FC1E3" : "#2F6690"
     readonly property color danger: dark ? "#E59A8F" : "#B4483B"
     readonly property color trackOff: dark ? "#3A4950" : "#C9D2D6"

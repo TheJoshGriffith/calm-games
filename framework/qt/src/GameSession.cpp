@@ -42,6 +42,7 @@ void GameSession::beginGame()
 {
     m_elapsed = 0;
     emit elapsedSecondsChanged();
+    setHintsUsed(0);
     m_history.clear();
     emit historyChanged();
     setComplete(false);
@@ -66,6 +67,8 @@ bool GameSession::resume()
     setLevel(saved.value(QStringLiteral("level")).toString());
     m_elapsed = saved.value(QStringLiteral("elapsed")).toInt();
     emit elapsedSecondsChanged();
+    // Saves from before hint tracking have no count: treat them as hint-free.
+    setHintsUsed(saved.value(QStringLiteral("hintsUsed")).toInt());
     m_history.clear();
     emit historyChanged();
     setComplete(false);
@@ -129,12 +132,27 @@ void GameSession::finishGame()
         return;
     setComplete(true);
     updateTimer();
-    Stats::recordWon(gameId(), m_level, m_elapsed);
+    Stats::recordWon(gameId(), m_level, m_elapsed, m_hintsUsed > 0);
     SaveStore::remove(gameId());
     emit hasSavedGameChanged();
     emit stateChanged();
     emitFeedback(QStringLiteral("win"));
     emit won(m_elapsed);
+}
+
+void GameSession::noteHintUsed()
+{
+    if (!m_active || m_complete)
+        return;
+    setHintsUsed(m_hintsUsed + 1);
+}
+
+void GameSession::setHintsUsed(int hints)
+{
+    if (m_hintsUsed == hints)
+        return;
+    m_hintsUsed = hints;
+    emit hintsUsedChanged();
 }
 
 void GameSession::setLevel(const QString& level)
@@ -185,6 +203,7 @@ void GameSession::autosave()
     QVariantMap saved;
     saved.insert(QStringLiteral("level"), m_level);
     saved.insert(QStringLiteral("elapsed"), m_elapsed);
+    saved.insert(QStringLiteral("hintsUsed"), m_hintsUsed);
     saved.insert(QStringLiteral("game"), saveState());
     const bool existed = SaveStore::exists(gameId());
     SaveStore::save(gameId(), saved);

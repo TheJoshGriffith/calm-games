@@ -1,0 +1,2 @@
+# Share links open the app itself; index.html reads the payload from the path.
+/s/*  /index.html  200

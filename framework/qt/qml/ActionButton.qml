@@ -12,19 +12,28 @@ T.AbstractButton {
     implicitHeight: 60
     Accessible.name: text
 
-    contentItem: Column {
-        spacing: 4
-        Icon {
-            anchors.horizontalCenter: parent.horizontalCenter
-            path: control.iconPath
-            opacity: control.enabled ? 1 : 0.35
-        }
-        CalmText {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: control.text
-            font.pixelSize: 12
-            font.weight: Font.DemiBold
-            opacity: control.enabled ? 1 : 0.35
+    // The column is centred in the button, so the pressed or checked
+    // background sits evenly around the icon and label.
+    contentItem: Item {
+        implicitWidth: content.implicitWidth
+        implicitHeight: content.implicitHeight
+
+        Column {
+            id: content
+            anchors.centerIn: parent
+            spacing: 4
+            Icon {
+                anchors.horizontalCenter: parent.horizontalCenter
+                path: control.iconPath
+                opacity: control.enabled ? 1 : 0.35
+            }
+            CalmText {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: control.text
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+                opacity: control.enabled ? 1 : 0.35
+            }
         }
     }
 
