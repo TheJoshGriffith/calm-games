@@ -1,11 +1,14 @@
 #include "Settings.h"
 
+#include "SoundBank.h"
+
 #include <algorithm>
 
 namespace {
 const QString kTheme = QStringLiteral("app/theme");
 const QString kSound = QStringLiteral("app/soundEnabled");
 const QString kVolume = QStringLiteral("app/volume");
+const QString kSoundTheme = QStringLiteral("app/soundTheme");
 const QString kHaptics = QStringLiteral("app/hapticsEnabled");
 const QString kHapticsStrength = QStringLiteral("app/hapticsStrength");
 const QString kReduceMotion = QStringLiteral("app/reduceMotion");
@@ -96,4 +99,18 @@ void Settings::setReduceMotion(bool reduce)
         return;
     m_store.setValue(kReduceMotion, reduce);
     emit reduceMotionChanged();
+}
+
+QString Settings::soundTheme() const
+{
+    const QString theme = m_store.value(kSoundTheme).toString();
+    return SoundBank::themeIds().contains(theme) ? theme : SoundBank::themeIds().constFirst();
+}
+
+void Settings::setSoundTheme(const QString& theme)
+{
+    if (theme == soundTheme() || !SoundBank::themeIds().contains(theme))
+        return;
+    m_store.setValue(kSoundTheme, theme);
+    emit soundThemeChanged();
 }
