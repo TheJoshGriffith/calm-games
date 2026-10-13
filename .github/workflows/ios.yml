@@ -6,6 +6,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Mac runners are scarce. A newer push to a pull request cancels its running
+# build; on main, a running upload finishes and a newer push replaces any run
+# still waiting, so only the latest commit queues for TestFlight.
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   games:
     # Every game with an iOS app (games/<name>/app/ios/Info.plist.in) gets its
