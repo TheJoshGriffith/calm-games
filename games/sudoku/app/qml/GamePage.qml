@@ -107,6 +107,15 @@ CalmPage {
                 text: qsTr("%1 in %2").arg(page.game.level).arg(page.formatTime(page.game.elapsedSeconds))
                 color: Theme.muted
             }
+            CalmText {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: page.game.hintsUsed === 0 ? qsTr("No hints")
+                      : page.game.hintsUsed === 1 ? qsTr("1 hint used")
+                      : qsTr("%1 hints used").arg(page.game.hintsUsed)
+                font.pixelSize: 14
+                color: Theme.muted
+            }
             Item { width: 1; height: 12 }
             CardButton {
                 width: parent.width

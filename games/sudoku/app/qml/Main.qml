@@ -16,9 +16,14 @@ AppWindow {
         game: sudoku
         onPlayRequested: window.push(gamePage)
         onSettingsRequested: window.push(settingsPage)
+        onStatsRequested: window.push(statsPage)
     }
 
-    // Development aids: --play <Level> opens a new game, --settings the settings.
+    // Level ids as Stats records them (and as HomePage starts them).
+    readonly property var levels: ["Easy", "Medium", "Hard", "Expert"]
+
+    // Development aids: --play <Level> opens a new game, --settings the
+    // settings, --stats the statistics.
     Component.onCompleted: {
         const args = Qt.application.arguments
         const play = args.indexOf("--play")
@@ -27,6 +32,8 @@ AppWindow {
             window.push(gamePage)
         } else if (args.indexOf("--settings") >= 0) {
             window.push(settingsPage)
+        } else if (args.indexOf("--stats") >= 0) {
+            window.push(statsPage)
         }
     }
 
@@ -43,6 +50,15 @@ AppWindow {
         id: settingsPage
         SudokuSettingsPage {
             game: sudoku
+            onBackRequested: window.pop()
+        }
+    }
+
+    Component {
+        id: statsPage
+        StatsPage {
+            gameId: sudoku.gameId
+            levels: window.levels
             onBackRequested: window.pop()
         }
     }
