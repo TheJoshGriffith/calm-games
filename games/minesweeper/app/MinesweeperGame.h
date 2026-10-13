@@ -58,7 +58,8 @@ public:
     Q_INVOKABLE void tap(int cell);
     // Opens a hidden cell, or on a satisfied number opens its neighbours.
     Q_INVOKABLE void open(int cell);
-    // Flags or unflags a hidden cell (long press or right click).
+    // Flags or unflags a hidden cell (long press or right click). On a number
+    // whose hidden neighbours must all be mines, flags every one of them.
     Q_INVOKABLE void flag(int cell);
     // Clears a wrong flag, or opens or flags a cell the numbers prove.
     // Returns false if nothing can be proved.

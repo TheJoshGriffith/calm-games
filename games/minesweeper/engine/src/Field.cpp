@@ -116,6 +116,21 @@ bool Field::toggleFlag(int cell)
     return true;
 }
 
+int Field::flagAround(int cell)
+{
+    if (m_state[cell] != Cell::Revealed || m_mine[cell] || m_adjacent[cell] == 0)
+        return 0;
+    int hidden = 0;
+    for (int n : neighbours(cell))
+        hidden += m_state[n] == Cell::Hidden;
+    if (hidden == 0 || hidden + flaggedNeighbours(cell) != m_adjacent[cell])
+        return 0;
+    for (int n : neighbours(cell))
+        if (m_state[n] == Cell::Hidden)
+            m_state[n] = Cell::Flagged;
+    return hidden;
+}
+
 int Field::flagCount() const
 {
     return static_cast<int>(std::count(m_state.begin(), m_state.end(), Cell::Flagged));
