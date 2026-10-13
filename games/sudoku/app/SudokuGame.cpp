@@ -325,6 +325,7 @@ bool SudokuGame::hint()
     setSelected(target);
     beginMove();
     place(target, m_board.solution[target]);
+    noteHintUsed();
     afterPlacement({ target });
     endMove();
     return true;

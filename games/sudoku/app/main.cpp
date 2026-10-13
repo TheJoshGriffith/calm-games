@@ -62,7 +62,7 @@ int main(int argc, char* argv[])
     }
 
     // Development aid: --screenshot <file.png> saves the window after start-up
-    // (combine with --play <Level> or --settings to open that screen).
+    // (combine with --play <Level>, --settings or --stats to open that screen).
     const QStringList args = QCoreApplication::arguments();
     const int shot = args.indexOf(QStringLiteral("--screenshot"));
     if (shot >= 0 && shot + 1 < args.size()) {

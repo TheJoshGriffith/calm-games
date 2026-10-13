@@ -16,12 +16,17 @@ AppWindow {
         game: sudoku
         onPlayRequested: window.push(gamePage)
         onSettingsRequested: window.push(settingsPage)
+        onStatsRequested: window.push(statsPage)
     }
 
-    // Development aids: --play <Level> opens a new game, --settings the settings.
-    // --dark shows the dark theme for this run only. With --play,
-    // --demo-input seeds marks, colours, a clash and a multi-selection for
-    // screenshots, and --mode <Number|Corner|Centre|Colour> picks the input mode.
+    // Level ids as Stats records them (and as HomePage starts them).
+    readonly property var levels: ["Easy", "Medium", "Hard", "Expert"]
+
+    // Development aids: --play <Level> opens a new game, --settings the
+    // settings, --stats the statistics. --dark shows the dark theme for this
+    // run only. With --play, --demo-input seeds marks, colours, a clash and a
+    // multi-selection for screenshots, and --mode <Number|Corner|Centre|Colour>
+    // picks the input mode.
     property string themeBeforeDev: ""
     property bool demoPending: false
 
@@ -39,6 +44,8 @@ AppWindow {
             seedDemoWhenReady()
         } else if (args.indexOf("--settings") >= 0) {
             window.push(settingsPage)
+        } else if (args.indexOf("--stats") >= 0) {
+            window.push(statsPage)
         }
     }
 
@@ -145,6 +152,15 @@ AppWindow {
         id: settingsPage
         SudokuSettingsPage {
             game: sudoku
+            onBackRequested: window.pop()
+        }
+    }
+
+    Component {
+        id: statsPage
+        StatsPage {
+            gameId: sudoku.gameId
+            levels: window.levels
             onBackRequested: window.pop()
         }
     }
