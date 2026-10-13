@@ -2,6 +2,16 @@
 # statistics and the GameSession base class every game derives from.
 qt_add_library(calm_framework STATIC)
 
+# Sound themes from tools/make_sounds.py: sounds/<theme>/<file>.wav. The themes
+# themselves are listed in SoundBank.cpp.
+set(calm_sounds)
+foreach(theme water chimes felt kalimba driftwood)
+    foreach(file tap_1 tap_2 tap_3 soft_1 soft_2 soft_3 erase error win
+                 complete_0 complete_1 complete_2 complete_3 complete_4 complete_5 complete_6 complete_7)
+        list(APPEND calm_sounds sounds/${theme}/${file}.wav)
+    endforeach()
+endforeach()
+
 # Must be set before qt_add_qml_module reads the files.
 set_source_files_properties(qml/Theme.qml qml/Icons.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
@@ -34,11 +44,7 @@ qt_add_qml_module(calm_framework
         qml/StatsPage.qml
     RESOURCES
         fonts/Nunito-Regular.ttf fonts/Nunito-SemiBold.ttf fonts/Nunito-Bold.ttf fonts/Nunito-ExtraBold.ttf
-        sounds/tap_1.wav sounds/tap_2.wav sounds/tap_3.wav
-        sounds/soft_1.wav sounds/soft_2.wav sounds/soft_3.wav
-        sounds/erase.wav sounds/error.wav sounds/win.wav
-        sounds/complete_0.wav sounds/complete_1.wav sounds/complete_2.wav sounds/complete_3.wav
-        sounds/complete_4.wav sounds/complete_5.wav sounds/complete_6.wav sounds/complete_7.wav
+        ${calm_sounds}
 )
 
 target_include_directories(calm_framework PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
