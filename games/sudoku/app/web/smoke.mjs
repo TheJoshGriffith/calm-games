@@ -97,14 +97,17 @@ await step('QML smoke test', async () => {
   }
 });
 
-// 2. Home screen, phone and desktop sizes.
-for (const [name, viewport] of [['sudoku-web', { width: 430, height: 932 }],
-                                ['sudoku-web-desktop', { width: 1280, height: 800 }]]) {
+// 2. Home screen at phone and desktop sizes, and a Hard game, whose puzzle is
+//    generated on the browser's main thread.
+const phone = { width: 430, height: 932 };
+for (const [name, url, viewport, settleMs] of [['sudoku-web', '/', phone, 4000],
+                                               ['sudoku-web-desktop', '/', { width: 1280, height: 800 }, 4000],
+                                               ['sudoku-web-game', '/?play=Hard', phone, 8000]]) {
   await step(name, async () => {
-    const { page, log } = await open(name, '/', viewport);
+    const { page, log } = await open(name, url, viewport);
     try {
       await waitFor(page, log, s => s === 'running', 120000, `${name} start`);
-      await page.waitForTimeout(4000); // first frames and the splash fade
+      await page.waitForTimeout(settleMs); // first frames, the splash fade, generation
       const state = await page.evaluate(() => window.calm.state);
       if (state !== 'running') failures.push(`${name}: app state is ${state} after start`);
       const canvases = await page.evaluate(() => {
@@ -114,6 +117,8 @@ for (const [name, viewport] of [['sudoku-web', { width: 430, height: 932 }],
       });
       if (canvases < 1) failures.push(`${name}: no Qt canvas on the page`);
       await page.screenshot({ path: join(shotDir, `${name}.png`) });
+      if (process.env.TEMP_PREVIEW)
+        await page.screenshot({ path: join(shotDir, `${name}-preview.jpg`), type: 'jpeg', quality: 70, scale: 'css' });
       console.log(`saved ${join(shotDir, `${name}.png`)} (${canvases} canvas)`);
     } finally {
       await page.close();

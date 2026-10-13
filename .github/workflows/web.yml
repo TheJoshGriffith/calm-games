@@ -95,12 +95,16 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Smoke test in headless Chromium
+        env:
+          TEMP_PREVIEW: 1
         run: node games/sudoku/app/web/smoke.mjs site screens
 
       - name: TEMP diagnostics
         if: always()
         run: |
-          if [ -f screens/sudoku-web.png ]; then echo "BEGIN-JPG"; convert screens/sudoku-web.png -resize 50% -quality 80 jpg:- | base64 -w 0; echo; echo "END-JPG"; fi
+          ls -l site screens
+          wc -c < site/CalmSudoku.wasm; gzip -9 -c site/CalmSudoku.wasm | wc -c; brotli -c -q 11 site/CalmSudoku.wasm | wc -c || true
+          for f in screens/*-preview.jpg; do echo "BEGIN $f"; base64 -w 0 "$f"; echo; echo "END $f"; done
 
       - name: Upload site
         if: always()

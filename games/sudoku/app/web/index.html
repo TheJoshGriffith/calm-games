@@ -161,6 +161,10 @@
         const match = window.location.pathname.match(/^\/s\/([^/?#]+)/);
         if (match)
           args.push('--share', decodeURIComponent(match[1]));
+        // Development aid, like the desktop flag: ?play=Hard opens a game.
+        const play = new URLSearchParams(window.location.search).get('play');
+        if (play)
+          args.push('--play', play);
         return args;
       }
 
