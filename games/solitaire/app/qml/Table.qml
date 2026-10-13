@@ -25,6 +25,12 @@ Item {
 
     function slotX(column) { return column * (cardW + gap) }
 
+    // Foundations alternate colours left to right: spades, diamonds, clubs,
+    // hearts. The game numbers suits spades, hearts, diamonds, clubs, so
+    // these map a suit to its foundation position and back.
+    readonly property var foundationPlace: [0, 3, 1, 2]
+    readonly property var foundationSuit: [0, 2, 3, 1]
+
     // Where every card sits, indexed by card id.
     function layout(cards, w, h) {
         const down = [0, 0, 0, 0, 0, 0, 0]
@@ -64,7 +70,7 @@ Item {
                 if (game.drawCount > 1)
                     x += Math.max(0, c.pos - (c.count - 3)) * fan
             } else if (c.pile === SolitaireGame.Foundation) {
-                x = slotX(3 + c.slot)
+                x = slotX(3 + foundationPlace[c.slot])
             } else if (c.pile === SolitaireGame.Tableau) {
                 const d = down[c.slot]
                 x = slotX(c.slot)
@@ -80,7 +86,7 @@ Item {
         const column = Math.max(0, Math.min(6, Math.floor((x + gap / 2) / (cardW + gap))))
         if (y < tableauTop - gap) {
             if (column >= 3)
-                return [SolitaireGame.Foundation, column - 3]
+                return [SolitaireGame.Foundation, foundationSuit[column - 3]]
             return null
         }
         return [SolitaireGame.Tableau, column]
@@ -143,7 +149,8 @@ Item {
         model: 4
         Rectangle {
             required property int index
-            readonly property bool target: table.game.hint.pile === SolitaireGame.Foundation && table.game.hint.slot === index
+            readonly property int suit: table.foundationSuit[index]
+            readonly property bool target: table.game.hint.pile === SolitaireGame.Foundation && table.game.hint.slot === suit
             x: table.slotX(3 + index)
             width: table.cardW
             height: table.cardH
@@ -155,7 +162,7 @@ Item {
 
             SuitIcon {
                 anchors.centerIn: parent
-                suit: parent.index
+                suit: parent.suit
                 size: table.cardW * 0.45
                 color: Theme.muted
                 opacity: 0.35
