@@ -1,5 +1,7 @@
 #include "SoundBank.h"
 
+#include "platform/Platform.h"
+
 #include <QUrl>
 
 namespace {
@@ -10,6 +12,7 @@ constexpr qint64 kCooldownMs = 45;
 SoundBank::SoundBank(QObject* parent)
     : QObject(parent)
 {
+    calm::platform::configureAudioSession();
     m_clock.start();
     add(QStringLiteral("tap"), { QStringLiteral("tap_1"), QStringLiteral("tap_2"), QStringLiteral("tap_3") }, 1.0);
     add(QStringLiteral("soft"), { QStringLiteral("soft_1"), QStringLiteral("soft_2"), QStringLiteral("soft_3") }, 0.8);
