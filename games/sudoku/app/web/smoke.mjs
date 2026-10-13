@@ -25,10 +25,16 @@ export default async function sudokuChecks(t) {
 
       // The moves were autosaved; reopening the site should offer to resume.
       await page.waitForTimeout(1000);
-      console.log(`storage: ${await page.evaluate(() => window.calm.storage)}`);
+      const files = () => page.evaluate(() => ({
+        storage: window.calm.storage,
+        events: window.calm.events,
+        files: window.calm.files ? window.calm.files() : [],
+      }));
+      console.log(`before reload: ${JSON.stringify(await files())}`);
       await page.goto(t.base + '/');
       await t.waitFor(page, log, s => s === 'running', 120000, 'reload');
       await page.waitForTimeout(4000);
+      console.log(`after reload: ${JSON.stringify(await files())}`);
       const reopened = await t.inspect(await page.screenshot({ path: join(t.shotDir, 'sudoku-web-reopened.png') }));
       console.log(`home screen after reopening:\n${reopened.map}`);
       // A first visit has no game to continue; after playing, the home
