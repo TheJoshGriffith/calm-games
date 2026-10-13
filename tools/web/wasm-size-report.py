@@ -60,6 +60,9 @@ def group_of(chunk):
     if m:
         path, member = m.group(1), m.group(2)
     name = path.rsplit("/", 1)[-1]
+    if "/qmlcache/" in path:
+        m = re.search(r"/CMakeFiles/([^/]+)\.dir/", path)
+        return "compiled QML: " + (m.group(1) if m else name)
     if "/.rcc/" in path or re.match(r"qrc_", member or name):
         res = re.sub(r"\.cpp\.o(bj)?$", "", member or name)
         return "resources: " + re.sub(r"^qrc_", "", res)

@@ -90,6 +90,32 @@ After its first deploy to main, add its custom domain (step 5 below).
   file system, per browser and per domain. Sudoku's smoke test checks that a
   game survives a reload.
 
+### Download size
+
+Each game is one `.wasm` of about 23 MB: Qt's QML engine, Qt Quick, Qt GUI
+and Qt Core are about 14 MB of code between them, and the framework's sounds
+and fonts are 4.5 MB of data. Cloudflare Pages takes files up to 25 MiB, so:
+
+- **The code is uploaded gzipped.** `make-site.py` writes `<Target>.wasm.gz`
+  (about 9.6 MB) and no raw `.wasm`. It is served as a plain
+  `application/gzip` file (see `_headers`), which Cloudflare passes through
+  untouched. The page unzips it with the browser's `DecompressionStream` and
+  compiles it with `WebAssembly.compileStreaming` while it downloads (falling
+  back to compiling in one go), and the smoke test checks the streaming path
+  is used. Browsers without `DecompressionStream` (before Safari 16.4 or
+  Firefox 113) get a "please update your browser" message. Before this, the
+  raw file went out with Cloudflare's own brotli at about 10.3 MB.
+- **Unused parts of Qt are left out** by `framework/qt/cmake/CalmWeb.cmake`
+  (WebAssembly builds only): image format, icon engine and TLS plugins, Qt
+  Quick Controls (Calm uses QtQuick.Templates), the DejaVu fallback fonts the
+  wasm platform plugin embeds (Calm loads Nunito), and Qt Multimedia's video
+  shaders and Qt Quick's curve-renderer shaders. That saves about 2.1 MB raw
+  per game. `-DCALM_WEB_TRIM=...` switches the items on and off for
+  measuring; a game that needs one of them back (say, JPEG images) should ask
+  for it to be removed from the default list.
+- The job summary breaks the `.wasm` down by Qt module, plugin and resource
+  from the link map (`tools/web/wasm-size-report.py`).
+
 ### Building it yourself
 
 ```sh
@@ -98,10 +124,11 @@ source ~/emsdk/emsdk_env.sh
 ~/Qt/6.8.3/wasm_singlethread/bin/qt-cmake -S . -B build-wasm -G Ninja \
     -DCMAKE_BUILD_TYPE=MinSizeRel -DQT_HOST_PATH=$HOME/Qt/6.8.3/gcc_64 \
     -DQT_WASM_EXTRA_EXPORTED_METHODS="ENV,FS,addRunDependency,removeRunDependency" \
-    -DCMAKE_EXE_LINKER_FLAGS="-lidbfs.js" \
+    -DCMAKE_EXE_LINKER_FLAGS="-lidbfs.js -Wl,--Map=$PWD/link.map" \
     -DCALM_GAMES=sudoku -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF
 cmake --build build-wasm --target CalmSudoku
 python3 tools/web/make-site.py --build-dir build-wasm --game sudoku --out site
+python3 tools/web/wasm-size-report.py build-wasm/games/sudoku/app/CalmSudoku.wasm --map link.map
 python3 -m http.server -d site 8000      # then open http://localhost:8000
 # or, with Playwright installed: node tools/web/smoke.mjs site screens sudoku
 ```
