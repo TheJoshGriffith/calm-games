@@ -116,42 +116,50 @@
 
       function setStatus(text) { status.textContent = text; }
 
-      // Download the .wasm ourselves so the bar can show real progress, then
-      // hand the bytes to Qt as a compiled module.
-      async function fetchWasm(url) {
+      // The game's code is served gzipped, as the plain file __TARGET__.wasm.gz
+      // (__WASM_GZ_BYTES__ bytes), not with a Content-Encoding header: the raw
+      // .wasm comes close to Cloudflare Pages' 25 MiB limit per file, and a
+      // plain file passes through any server or CDN untouched. The page
+      // counts the bytes for the progress bar, unzips them with the browser's
+      // DecompressionStream and compiles the code while it is still arriving,
+      // then hands Qt the compiled module.
+      const wasmBytes = __WASM_GZ_BYTES__;
+
+      async function download(url) {
         const response = await fetch(url);
         if (!response.ok)
           throw new Error('Could not download the game (' + response.status + ')');
-        // Content-Length is the compressed size when the server gzips, so
-        // treat it as a hint and fall back to an indeterminate bar.
-        const total = Number(response.headers.get('Content-Length')) || 0;
-        const encoded = response.headers.get('Content-Encoding');
-        if (!response.body || !total || encoded) {
-          bar.classList.add('indeterminate');
-          return WebAssembly.compile(await response.arrayBuffer());
-        }
-        const reader = response.body.getReader();
-        const bytes = new Uint8Array(total);
         let received = 0;
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (received + value.length > total) {
+        return response.body.pipeThrough(new TransformStream({
+          transform(chunk, controller) {
+            received += chunk.byteLength;
+            progress.style.width = Math.min(100, Math.round(100 * received / wasmBytes)) + '%';
+            controller.enqueue(chunk);
+          },
+          flush() {
             bar.classList.add('indeterminate');
-            const rest = new Uint8Array(await new Response(value).arrayBuffer());
-            const merged = new Uint8Array(received + rest.length);
-            merged.set(bytes.subarray(0, received));
-            merged.set(rest, received);
-            received += rest.length;
-            return WebAssembly.compile(merged);
+            setStatus('Starting');
+          },
+        })).pipeThrough(new DecompressionStream('gzip'));
+      }
+
+      async function fetchWasm(url) {
+        if (typeof DecompressionStream === 'undefined' || typeof TransformStream === 'undefined')
+          throw new Error('Please update your browser to play.');
+        if (WebAssembly.compileStreaming) {
+          try {
+            const wasm = new Response(await download(url), { headers: { 'Content-Type': 'application/wasm' } });
+            const module = await WebAssembly.compileStreaming(wasm);
+            window.calm.compile = 'streaming';
+            return module;
+          } catch (error) {
+            // Compile in one go instead (the download is cached by now).
+            console.warn('Streaming compilation did not work, compiling in one go:', error);
+            bar.classList.remove('indeterminate');
           }
-          bytes.set(value, received);
-          received += value.length;
-          progress.style.width = Math.round(100 * received / total) + '%';
         }
-        bar.classList.add('indeterminate');
-        setStatus('Starting');
-        return WebAssembly.compile(bytes.subarray(0, received));
+        window.calm.compile = 'buffered';
+        return WebAssembly.compile(await new Response(await download(url)).arrayBuffer());
       }
 
       // Share links: https://<domain>/s/<payload> starts the app with
@@ -249,7 +257,7 @@
 
       async function start() {
         try {
-          const module = await fetchWasm('__TARGET__.wasm?v=__BUILD__');
+          const module = await fetchWasm('__TARGET__.wasm.gz?v=__BUILD__');
           await qtLoad({
             arguments: appArguments(),
             preRun: [persistentHome],

@@ -4,12 +4,14 @@
     python3 tools/web/make-site.py --build-dir build-wasm --game sudoku --out site [--build-id abc123]
 
 The site is plain static files for Cloudflare Pages (or python3 -m http.server):
-the app's <Target>.js / <Target>.wasm / qtloader.js, tools/web/index.html (the
-branded loading page) and _headers, icons drawn from the game's iOS app icon,
+the app's <Target>.js and qtloader.js, its <Target>.wasm gzipped as
+<Target>.wasm.gz (the page unzips it in the browser; see index.html),
+tools/web/index.html (the branded loading page) and _headers, icons drawn from the game's iOS app icon,
 and anything the game adds in games/<name>/app/web/site/ (e.g. _redirects).
 """
 
 import argparse
+import gzip
 import re
 import shutil
 import sys
@@ -63,7 +65,14 @@ def main():
         shutil.rmtree(out)
     out.mkdir(parents=True)
     for f in files:
-        shutil.copy2(app_dir / f, out / f)
+        if f.endswith(".wasm"):
+            # Served as a plain gzip file, unzipped by the page: Cloudflare
+            # Pages takes files up to 25 MiB, and the raw .wasm comes close.
+            # mtime=0 keeps the output identical for identical input.
+            with open(out / f"{f}.gz", "wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=9, mtime=0) as gz:
+                gz.write((app_dir / f).read_bytes())
+        else:
+            shutil.copy2(app_dir / f, out / f)
     shutil.copy2(WEB / "_headers", out / "_headers")
     make_icons(args.game, out)
 
@@ -71,7 +80,12 @@ def main():
     # makes fresh URLs for the engine files on every deploy, so they can be
     # cached hard (see _headers).
     page = (WEB / "index.html").read_text()
-    for token, value in {"__TITLE__": f"Gwynant {title}", "__TARGET__": target, "__BUILD__": args.build_id}.items():
+    for token, value in {
+        "__TITLE__": f"Gwynant {title}",
+        "__TARGET__": target,
+        "__BUILD__": args.build_id,
+        "__WASM_GZ_BYTES__": str((out / f"{target}.wasm.gz").stat().st_size),
+    }.items():
         page = page.replace(token, value)
     (out / "index.html").write_text(page)
 

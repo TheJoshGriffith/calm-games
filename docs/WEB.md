@@ -28,12 +28,13 @@ Its "Find web games" job lists every `games/<name>/app/CMakeLists.txt` with a
    `-lidbfs.js` linked so the page can pass environment variables and keep the
    home directory in IndexedDB) and builds the game's target.
 3. `tools/web/make-site.py` assembles `site/`:
-   - `<Target>.wasm`, `<Target>.js` and `qtloader.js`;
+   - `<Target>.wasm.gz` (the app's code, gzipped), `<Target>.js` and
+     `qtloader.js`;
    - `tools/web/index.html` in place of Qt's generated page: a calm loading
      screen with "Gwynant \<Title\>" and a progress bar, light or dark to
      match the system;
-   - `tools/web/_headers` (`application/wasm`, long caching for engine files,
-     which the page loads as `?v=<commit>`);
+   - `tools/web/_headers` (long caching for engine files, which the page
+     loads as `?v=<commit>`);
    - icons drawn from the game's iOS app icon;
    - anything in `games/<name>/app/web/site/`, copied last.
 4. `tools/web/smoke.mjs` serves the site the way Pages does and opens it in
@@ -42,8 +43,10 @@ Its "Find web games" job lists every `games/<name>/app/CMakeLists.txt` with a
    and checks they are really rendered. Then it runs the game's own checks from
    `games/<name>/app/web/smoke.mjs`, if there are any.
 5. Uploads `<name>-web-site` and `<name>-web-screenshots` as workflow
-   artifacts, and lists the download sizes in the job summary. The job fails
-   if the `.wasm` outgrows Cloudflare Pages' 25 MiB per-file limit.
+   artifacts, and lists the `.wasm` size (raw, gzip as uploaded, brotli) in
+   the job summary with a breakdown of what it is made of, from the link map.
+   The job warns when any uploaded file passes 15 MiB and fails over
+   Cloudflare Pages' 25 MiB per-file limit.
 6. Deploys `site/` to the Pages project `gwynant-<name>` with
    `wrangler pages deploy`, after the smoke test passes. It creates the
    project first if it doesn't exist.

@@ -48,7 +48,15 @@ qt_add_qml_module(calm_framework
 )
 
 target_include_directories(calm_framework PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(calm_framework PUBLIC Calm::Core Qt6::Quick Qt6::QuickControls2 Qt6::Multimedia)
+target_link_libraries(calm_framework PUBLIC Calm::Core Qt6::Quick Qt6::Multimedia)
+
+# The web build leaves out what Calm doesn't use (cmake/CalmWeb.cmake).
+if(EMSCRIPTEN)
+    include(cmake/CalmWeb.cmake)
+endif()
+if(NOT EMSCRIPTEN OR NOT "controls" IN_LIST CALM_WEB_TRIM)
+    target_link_libraries(calm_framework PUBLIC Qt6::QuickControls2)
+endif()
 
 # With a static Qt (iOS), qmlimportscanner only scans each app's own QML, so the
 # plugins behind the framework's imports would be left out and Main.qml fails

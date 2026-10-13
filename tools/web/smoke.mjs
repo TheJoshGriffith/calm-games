@@ -32,6 +32,7 @@ const types = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.wasm': 'application/wasm',
+  '.gz': 'application/gzip',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.svg': 'image/svg+xml',
@@ -204,6 +205,9 @@ async function shoot(name, url, viewport = phone, settleMs = 4000) {
   await page.waitForTimeout(settleMs); // first frames and the splash fade
   const state = await page.evaluate(() => window.calm.state);
   if (state !== 'running') fail(`${name}: app state is ${state} after start`);
+  // The page unzips <Target>.wasm.gz and compiles it while it downloads.
+  const compile = await page.evaluate(() => window.calm.compile);
+  if (compile !== 'streaming') fail(`${name}: the game's code was compiled '${compile}', not streaming`);
   const canvases = await page.evaluate(() => {
     const count = root => root.querySelectorAll('canvas').length
       + [...root.querySelectorAll('*')].reduce((n, e) => n + (e.shadowRoot ? count(e.shadowRoot) : 0), 0);
