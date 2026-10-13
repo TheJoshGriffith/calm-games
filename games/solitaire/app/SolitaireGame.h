@@ -4,13 +4,23 @@
 
 #include <solitaire/Solver.h>
 
-#include <QFutureWatcher>
 #include <QHash>
 #include <QList>
 #include <QQmlEngine>
 #include <QSettings>
 #include <QTimer>
 #include <QVariantList>
+#include <QtGlobal>
+
+// Deals and losing-move checks run on worker threads where Qt has threads. A
+// single-threaded build (WebAssembly) runs them one at a time on the event
+// loop instead, between frames.
+#if QT_CONFIG(thread)
+#define CALM_SOLITAIRE_THREADS 1
+#include <QFutureWatcher>
+#else
+#define CALM_SOLITAIRE_THREADS 0
+#endif
 
 // The Klondike game session: the table, player moves, hints, auto-complete
 // and losing-move warnings, built on the framework's GameSession. Levels are
@@ -115,6 +125,7 @@ private:
     void setLosingMove(bool losing);
     void checkForLosingMove(const std::string& before);
     void startAnalysis();
+    void onVerdict(const std::string& before, const QByteArray& after, solitaire::Verdict verdict);
 
     int bufferKey(int drawCount, bool winnable) const { return drawCount * 2 + (winnable ? 1 : 0); }
     void requestDeal(int drawCount, bool winnable);
@@ -145,12 +156,33 @@ private:
     bool m_losingMove = false;
     QHash<QByteArray, int> m_verdicts; // position -> solitaire::Verdict
     std::optional<Analysis> m_pendingAnalysis;
+#if CALM_SOLITAIRE_THREADS
     QFutureWatcher<solitaire::Verdict>* m_analysis = nullptr;
     std::atomic_bool m_stopAnalysis { false };
+#endif
 
     std::optional<int> m_waitingFor;
     QHash<int, QList<solitaire::Deal>> m_buffer;
     QHash<int, int> m_inFlight;
+#if CALM_SOLITAIRE_THREADS
     QList<QFutureWatcher<solitaire::Deal>*> m_watchers;
+#else
+    struct DealJob {
+        int key;
+        quint64 seed;
+    };
+    void scheduleWork();
+    void workNext();
+    QList<DealJob> m_pendingDeals;
+    // The losing-move check under way, searched a slice per timer tick.
+    struct RunningAnalysis {
+        std::string before;
+        QByteArray after;
+        solitaire::SteppedSolve search;
+    };
+    std::optional<RunningAnalysis> m_runningAnalysis;
+    QTimer m_workTimer;
+    bool m_warmedUp = false;
+#endif
     mutable QSettings m_settings;
 };

@@ -3,7 +3,10 @@
 #include <algorithm>
 
 #include <QRandomGenerator>
+
+#if CALM_SOLITAIRE_THREADS
 #include <QtConcurrent/QtConcurrentRun>
+#endif
 
 using solitaire::DrawResult;
 using solitaire::Klondike;
@@ -28,6 +31,10 @@ SolitaireGame::SolitaireGame(QObject* parent)
 {
     m_finishTimer.setInterval(FinishStepMs);
     connect(&m_finishTimer, &QTimer::timeout, this, &SolitaireGame::finishStep);
+#if !CALM_SOLITAIRE_THREADS
+    m_workTimer.setSingleShot(true);
+    connect(&m_workTimer, &QTimer::timeout, this, &SolitaireGame::workNext);
+#endif
     // Have a deal of each kind ready so new games start instantly.
     requestDeal(1, winnableDeals());
     requestDeal(3, winnableDeals());
@@ -35,6 +42,7 @@ SolitaireGame::SolitaireGame(QObject* parent)
 
 SolitaireGame::~SolitaireGame()
 {
+#if CALM_SOLITAIRE_THREADS
     m_stopAnalysis = true;
     if (m_analysis) {
         m_analysis->disconnect(this);
@@ -44,6 +52,7 @@ SolitaireGame::~SolitaireGame()
         watcher->disconnect(this);
         watcher->waitForFinished();
     }
+#endif
 }
 
 int SolitaireGame::drawCountFor(const QString& level)
@@ -327,8 +336,12 @@ void SolitaireGame::checkForLosingMove(const std::string& before)
         if (planned.first == now)
             return;
     m_pendingAnalysis = Analysis { before, m_table };
+#if CALM_SOLITAIRE_THREADS
     if (!m_analysis)
         startAnalysis();
+#else
+    scheduleWork();
+#endif
 }
 
 void SolitaireGame::startAnalysis()
@@ -345,30 +358,42 @@ void SolitaireGame::startAnalysis()
             && m_verdicts.value(QByteArray::fromStdString(job.before), -1) != int(solitaire::Verdict::Unwinnable)
             && m_table.serialize() == job.after.serialize())
             setLosingMove(true);
+#if CALM_SOLITAIRE_THREADS
         startAnalysis();
+#endif
         return;
     }
 
+#if CALM_SOLITAIRE_THREADS
     m_analysis = new QFutureWatcher<solitaire::Verdict>(this);
     connect(m_analysis, &QFutureWatcherBase::finished, this, [this, job, after] {
         const solitaire::Verdict verdict = m_analysis->result();
         m_analysis->deleteLater();
         m_analysis = nullptr;
-        if (verdict != solitaire::Verdict::Unknown)
-            m_verdicts.insert(after, int(verdict));
-        // Warn only while that position is still on the table, and only for
-        // the move that lost the game, not every move after it.
-        const bool wasLost = m_verdicts.value(QByteArray::fromStdString(job.before), -1) == int(solitaire::Verdict::Unwinnable);
-        if (verdict == solitaire::Verdict::Unwinnable && !wasLost && active() && !complete()
-            && m_table.serialize() == job.after.serialize()) {
-            setLosingMove(true);
-            emitFeedback(QStringLiteral("error"));
-        }
+        onVerdict(job.before, after, verdict);
         startAnalysis();
     });
     const solitaire::Klondike table = job.after;
     std::atomic_bool* stop = &m_stopAnalysis;
     m_analysis->setFuture(QtConcurrent::run([table, stop] { return solitaire::solveExhaustive(table, 400000, stop); }));
+#else
+    m_runningAnalysis.emplace(RunningAnalysis { job.before, after, solitaire::SteppedSolve(job.after, 400000) });
+    scheduleWork();
+#endif
+}
+
+void SolitaireGame::onVerdict(const std::string& before, const QByteArray& after, solitaire::Verdict verdict)
+{
+    if (verdict != solitaire::Verdict::Unknown)
+        m_verdicts.insert(after, int(verdict));
+    // Warn only while that position is still on the table, and only for the
+    // move that lost the game, not every move after it.
+    const bool wasLost = m_verdicts.value(QByteArray::fromStdString(before), -1) == int(solitaire::Verdict::Unwinnable);
+    if (verdict == solitaire::Verdict::Unwinnable && !wasLost && active() && !complete()
+        && QByteArray::fromStdString(m_table.serialize()) == after) {
+        setLosingMove(true);
+        emitFeedback(QStringLiteral("error"));
+    }
 }
 
 void SolitaireGame::createGame(const QString& level)
@@ -385,6 +410,9 @@ void SolitaireGame::createGame(const QString& level)
     m_waitingFor = key;
     if (m_inFlight.value(key) == 0)
         requestDeal(draws, winnableDeals());
+#if !CALM_SOLITAIRE_THREADS
+    scheduleWork();
+#endif
 }
 
 void SolitaireGame::requestDeal(int drawCount, bool winnable)
@@ -395,6 +423,7 @@ void SolitaireGame::requestDeal(int drawCount, bool winnable)
     ++m_inFlight[key];
 
     const quint64 seed = QRandomGenerator::global()->generate64();
+#if CALM_SOLITAIRE_THREADS
     auto* watcher = new QFutureWatcher<solitaire::Deal>(this);
     m_watchers.append(watcher);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, key] {
@@ -408,7 +437,58 @@ void SolitaireGame::requestDeal(int drawCount, bool winnable)
             return solitaire::dealWinnable(seed, drawCount);
         return solitaire::Deal { Klondike::deal(seed, drawCount), seed, false };
     }));
+#else
+    m_pendingDeals.append({ key, seed });
+    scheduleWork();
+#endif
 }
+
+#if !CALM_SOLITAIRE_THREADS
+// Slices small enough to keep frames coming while a move is checked.
+constexpr int AnalysisSliceNodes = 10000;
+constexpr int AnalysisTickMs = 16;
+
+void SolitaireGame::scheduleWork()
+{
+    if (m_pendingDeals.isEmpty() && !m_pendingAnalysis && !m_runningAnalysis)
+        return;
+    // A deal blocks the only thread for up to a few hundred milliseconds, and
+    // a losing-move check runs in short slices. Leave time for frames between
+    // them, and let the first screen appear before warming the buffers. A
+    // deal the player is waiting for goes next without delay.
+    const bool analysing = m_pendingAnalysis || m_runningAnalysis;
+    const int delay = m_waitingFor ? 0 : analysing ? AnalysisTickMs : m_warmedUp ? 50 : 600;
+    if (!m_workTimer.isActive() || m_workTimer.remainingTime() > delay)
+        m_workTimer.start(delay);
+}
+
+void SolitaireGame::workNext()
+{
+    m_warmedUp = true;
+    qsizetype next = -1;
+    for (qsizetype i = 0; i < m_pendingDeals.size(); ++i) {
+        if (m_pendingDeals.at(i).key == m_waitingFor) {
+            next = i;
+            break;
+        }
+    }
+    if (next < 0 && m_runningAnalysis) {
+        if (const auto verdict = m_runningAnalysis->search.step(AnalysisSliceNodes)) {
+            const RunningAnalysis done = std::move(*m_runningAnalysis);
+            m_runningAnalysis.reset();
+            onVerdict(done.before, done.after, *verdict);
+        }
+    } else if (next < 0 && m_pendingAnalysis) {
+        startAnalysis();
+    } else if (next >= 0 || !m_pendingDeals.isEmpty()) {
+        const DealJob job = m_pendingDeals.takeAt(std::max<qsizetype>(next, 0));
+        const int drawCount = job.key / 2;
+        onDealReady(job.key, job.key % 2 == 1 ? solitaire::dealWinnable(job.seed, drawCount)
+                                              : solitaire::Deal { Klondike::deal(job.seed, drawCount), job.seed, false });
+    }
+    scheduleWork();
+}
+#endif
 
 void SolitaireGame::onDealReady(int key, const solitaire::Deal& deal)
 {

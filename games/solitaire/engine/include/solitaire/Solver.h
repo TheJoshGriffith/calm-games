@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -20,6 +21,24 @@ Verdict solve(const Klondike& game, int nodeBudget = 150000);
 // sequence of moves from `game` wins. Slower; "Unknown" when out of budget
 // or when `stop` becomes true.
 Verdict solveExhaustive(const Klondike& game, int nodeBudget = 400000, const std::atomic_bool* stop = nullptr);
+
+// solveExhaustive a slice at a time, for a single thread that must keep
+// drawing frames in between.
+class SteppedSolve {
+public:
+    explicit SteppedSolve(const Klondike& game, int nodeBudget = 400000);
+    ~SteppedSolve();
+    SteppedSolve(SteppedSolve&&) noexcept;
+    SteppedSolve& operator=(SteppedSolve&&) noexcept;
+
+    // Searches up to `nodes` more positions. The verdict once there is one,
+    // which then stays the same; nothing while the search goes on.
+    std::optional<Verdict> step(int nodes);
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+};
 
 // Every step of a winning line from `game`, if the solver finds one within
 // budget.

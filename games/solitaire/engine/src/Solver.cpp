@@ -82,45 +82,35 @@ public:
 
     Verdict run(const Klondike& start)
     {
-        // Iterative depth-first search: games can run hundreds of moves
-        // deep, too deep for the small stacks of worker threads.
-        struct Frame {
-            Klondike game;
-            std::vector<Hint> moves;
-            std::size_t next = 0;
-            std::vector<Hint> via; // the steps that led here
-        };
-        std::vector<Frame> stack;
-        auto enter = [&](Klondike game, std::vector<Hint> via) {
-            playSafeMoves(game, &via);
-            if (game.won()) {
-                path.clear();
-                for (std::size_t i = 1; i < stack.size(); ++i)
-                    path.insert(path.end(), stack[i].via.begin(), stack[i].via.end());
-                if (!stack.empty())
-                    path.insert(path.end(), via.begin(), via.end());
-                else
-                    path = via;
-                return true;
-            }
-            ++m_nodes;
-            if (m_seen.insert(hashGame(game)).second) {
-                auto moves = candidates(game);
-                stack.push_back({ std::move(game), std::move(moves), 0, std::move(via) });
-            }
-            return false;
-        };
-
-        if (enter(start, {}))
+        if (begin(start))
             return Verdict::Winnable;
+        return *advance(m_budget);
+    }
+
+    // Starts the search at `start`; true if that is a win already.
+    bool begin(const Klondike& start)
+    {
+        if (enter(start, {}))
+            return true;
         // The root's own safe moves come first on any winning line.
-        const std::vector<Hint> rootMoves = stack.empty() ? std::vector<Hint> {} : stack.front().via;
-        while (!stack.empty()) {
+        if (!m_stack.empty())
+            m_rootMoves = m_stack.front().via;
+        return false;
+    }
+
+    // Searches up to `slice` more positions: the verdict, or nothing if the
+    // search should carry on later.
+    std::optional<Verdict> advance(int slice)
+    {
+        const long long until = static_cast<long long>(m_nodes) + slice;
+        while (!m_stack.empty()) {
             if (m_nodes >= m_budget || (m_stop && m_stop->load(std::memory_order_relaxed)))
                 return Verdict::Unknown;
-            Frame& top = stack.back();
+            if (m_nodes >= until)
+                return std::nullopt;
+            Frame& top = m_stack.back();
             if (top.next >= top.moves.size()) {
-                stack.pop_back();
+                m_stack.pop_back();
                 continue;
             }
             const Hint step = top.moves[top.next++];
@@ -130,7 +120,8 @@ public:
             else if (!next.move(step.move).ok)
                 continue;
             if (enter(std::move(next), { step })) {
-                path.insert(path.begin(), rootMoves.begin(), rootMoves.end());
+                path.insert(path.begin(), m_rootMoves.begin(), m_rootMoves.end());
+                m_stack.clear();
                 return Verdict::Winnable;
             }
         }
@@ -138,6 +129,37 @@ public:
     }
 
 private:
+    // Iterative depth-first search: games can run hundreds of moves deep,
+    // too deep for the small stacks of worker threads.
+    struct Frame {
+        Klondike game;
+        std::vector<Hint> moves;
+        std::size_t next = 0;
+        std::vector<Hint> via; // the steps that led here
+    };
+
+    // Plays the safe moves from `game` and pushes it to search; true if won.
+    bool enter(Klondike game, std::vector<Hint> via)
+    {
+        playSafeMoves(game, &via);
+        if (game.won()) {
+            path.clear();
+            for (std::size_t i = 1; i < m_stack.size(); ++i)
+                path.insert(path.end(), m_stack[i].via.begin(), m_stack[i].via.end());
+            if (!m_stack.empty())
+                path.insert(path.end(), via.begin(), via.end());
+            else
+                path = via;
+            return true;
+        }
+        ++m_nodes;
+        if (m_seen.insert(hashGame(game)).second) {
+            auto moves = candidates(game);
+            m_stack.push_back({ std::move(game), std::move(moves), 0, std::move(via) });
+        }
+        return false;
+    }
+
     std::vector<Hint> candidates(const Klondike& game) const
     {
         std::vector<Hint> out;
@@ -238,9 +260,34 @@ private:
     const std::atomic_bool* m_stop;
     int m_nodes = 0;
     std::unordered_set<std::uint64_t> m_seen;
+    std::vector<Frame> m_stack;
+    std::vector<Hint> m_rootMoves;
 };
 
 } // namespace
+
+struct SteppedSolve::Impl {
+    Search search;
+    std::optional<Verdict> verdict;
+};
+
+SteppedSolve::SteppedSolve(const Klondike& game, int nodeBudget)
+    : m_impl(std::make_unique<Impl>(Impl { Search(nodeBudget, true), std::nullopt }))
+{
+    if (m_impl->search.begin(game))
+        m_impl->verdict = Verdict::Winnable;
+}
+
+SteppedSolve::~SteppedSolve() = default;
+SteppedSolve::SteppedSolve(SteppedSolve&&) noexcept = default;
+SteppedSolve& SteppedSolve::operator=(SteppedSolve&&) noexcept = default;
+
+std::optional<Verdict> SteppedSolve::step(int nodes)
+{
+    if (!m_impl->verdict)
+        m_impl->verdict = m_impl->search.advance(nodes);
+    return m_impl->verdict;
+}
 
 Verdict solve(const Klondike& game, int nodeBudget)
 {

@@ -5,8 +5,10 @@
 
 #include <chrono>
 #include <cstdio>
+#include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace solitaire;
@@ -204,6 +206,23 @@ void solverAndDeals()
     const Klondike dead = position(
         "1|6dTh6cQcJc|4CJHKS5H7C4D9D4S|AS2S|||AC2C|KCQDJSTD9S8D7S6H5C4H3S||6sQs9H8C|2dTc2hJD|KhAd9C8H|3d3c7hKd3H|Ts5sAh5dQh7d8S");
     CHECK(solveExhaustive(dead) == Verdict::Unwinnable);
+
+    // A slice at a time reaches the same verdicts, and keeps them.
+    auto stepped = [](const Klondike& game, int budget) {
+        SteppedSolve search(game, budget);
+        int slices = 0;
+        std::optional<Verdict> verdict;
+        while (!(verdict = search.step(500)))
+            ++slices;
+        CHECK(search.step(500) == verdict);
+        return std::pair { *verdict, slices };
+    };
+    CHECK(stepped(nearly, 400000).first == Verdict::Winnable);
+    CHECK(stepped(comeback, 400000).first == Verdict::Winnable);
+    const auto [deadVerdict, deadSlices] = stepped(dead, 400000);
+    CHECK(deadVerdict == Verdict::Unwinnable);
+    CHECK(deadSlices > 1);
+    CHECK(stepped(dead, 1000).first == Verdict::Unknown);
 
     // Proven deals really are winnable, and most random draw-one deals are.
     using Clock = std::chrono::steady_clock;

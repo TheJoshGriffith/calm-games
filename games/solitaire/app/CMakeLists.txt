@@ -26,8 +26,11 @@ target_link_libraries(CalmSolitaire PRIVATE
     calm_framework
     calm_frameworkplugin
     Qt6::Quick
-    Qt6::Concurrent
 )
+# Single-threaded Qt (WebAssembly) deals and checks moves on the event loop instead.
+if(NOT DEFINED QT_FEATURE_thread OR QT_FEATURE_thread)
+    target_link_libraries(CalmSolitaire PRIVATE Qt6::Concurrent)
+endif()
 
 if(CALM_BUILD_TESTS)
     add_test(NAME solitaire_app_smoke COMMAND CalmSolitaire --play "Draw one")
