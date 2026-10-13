@@ -45,6 +45,10 @@ if(IOS)
     )
     target_sources(CalmSudoku PRIVATE ${sudoku_ios_resources})
 
+    # Qt's default iOS media backend is FFmpeg, whose libraries Qt doesn't ship
+    # for static iOS builds. The native AVFoundation backend covers our sounds.
+    qt_import_plugins(CalmSudoku INCLUDE_BY_TYPE multimedia Qt6::QDarwinMediaPlugin)
+
     set_target_properties(CalmSudoku PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/ios/Info.plist.in
         QT_IOS_LAUNCH_SCREEN ${CMAKE_CURRENT_SOURCE_DIR}/ios/LaunchScreen.storyboard
