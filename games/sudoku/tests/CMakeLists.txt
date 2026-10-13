@@ -1,0 +1,3 @@
+add_executable(sudoku_engine_tests engine_tests.cpp)
+target_link_libraries(sudoku_engine_tests PRIVATE Sudoku::Engine)
+add_test(NAME sudoku_engine_tests COMMAND sudoku_engine_tests)
