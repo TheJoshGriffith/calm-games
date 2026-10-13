@@ -43,6 +43,20 @@ qt_add_qml_module(calm_framework
 target_include_directories(calm_framework PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(calm_framework PUBLIC Calm::Core Qt6::Quick Qt6::QuickControls2 Qt6::Multimedia)
 
+# With a static Qt (iOS), qmlimportscanner only scans each app's own QML, so the
+# plugins behind the framework's imports would be left out and Main.qml fails
+# to load ("module QtQuick.Shapes is not installed"). Link them here instead;
+# each plugin target brings its own initializer.
+if(NOT QT6_IS_SHARED_LIBS_BUILD)
+    find_package(Qt6 REQUIRED COMPONENTS QuickShapesPrivate QuickTemplates2)
+    foreach(plugin qtquick2plugin qtquicktemplates2plugin qmlshapesplugin)
+        if(NOT TARGET Qt6::${plugin})
+            message(FATAL_ERROR "Static Qt has no QML plugin target Qt6::${plugin}")
+        endif()
+        target_link_libraries(calm_framework PUBLIC Qt6::${plugin})
+    endforeach()
+endif()
+
 # Platform hooks (audio session, haptics).
 if(IOS)
     target_sources(calm_framework PRIVATE src/platform/Platform.h src/platform/Platform_ios.mm)
