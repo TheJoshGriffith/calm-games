@@ -41,6 +41,7 @@ qt_add_qml_module(calm_framework
         qml/ToggleRow.qml
         qml/SettingsGroup.qml
         qml/SettingsPage.qml
+        qml/StatsPage.qml
     RESOURCES
         fonts/Nunito-Regular.ttf fonts/Nunito-SemiBold.ttf fonts/Nunito-Bold.ttf fonts/Nunito-ExtraBold.ttf
         ${calm_sounds}

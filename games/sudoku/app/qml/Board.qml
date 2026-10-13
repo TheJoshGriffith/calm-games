@@ -14,6 +14,28 @@ Rectangle {
     readonly property int primary: game.selected
     readonly property int selectedDigit: primary >= 0 && cells.length === 81 ? cells[primary].digit : 0
     readonly property bool multiple: game.selection.length > 1
+    // A digit pressed with nothing selected: its cells light up and every cell
+    // it can no longer go in is shaded, leaving its possible places clear.
+    readonly property int focusDigit: game.selection.length === 0 ? game.focusDigit : 0
+    // focusBlocked[i] is true when focusDigit can't go in cell i.
+    readonly property var focusBlocked: {
+        const blocked = new Array(81).fill(false)
+        if (focusDigit === 0 || cells.length !== 81)
+            return blocked
+        const rows = [], cols = [], boxes = []
+        for (let i = 0; i < 81; ++i) {
+            if (cells[i].digit === focusDigit) {
+                const r = Math.floor(i / 9), c = i % 9
+                rows[r] = cols[c] = boxes[Math.floor(r / 3) * 3 + Math.floor(c / 3)] = true
+            }
+        }
+        for (let i = 0; i < 81; ++i) {
+            const r = Math.floor(i / 9), c = i % 9
+            blocked[i] = cells[i].digit !== focusDigit
+                && (cells[i].digit > 0 || !!rows[r] || !!cols[c] || !!boxes[Math.floor(r / 3) * 3 + Math.floor(c / 3)])
+        }
+        return blocked
+    }
     // selectedFlags[i] is true when cell i is in the selection.
     readonly property var selectedFlags: {
         const flags = new Array(81).fill(false)
@@ -78,6 +100,8 @@ Rectangle {
                 readonly property bool matching: board.game.highlightMatching && board.selectedDigit > 0
                                                  && modelData.digit === board.selectedDigit
                 readonly property bool peer: board.game.highlightPeers && board.isPeer(index, board.primary)
+                readonly property bool focused: board.focusDigit > 0 && modelData.digit === board.focusDigit
+                readonly property bool blocked: board.focusBlocked[index]
                 readonly property bool coloured: modelData.colour > 0
                 readonly property var cornerDigits: modelData.digit === 0 ? board.digitsOf(modelData.corner) : []
                 readonly property var centreDigits: modelData.digit === 0 ? board.digitsOf(modelData.centre) : []
@@ -102,8 +126,8 @@ Rectangle {
                 // and let through it partly so both stay visible.
                 Rectangle {
                     anchors.fill: parent
-                    color: cell.selected ? Theme.selection : cell.matching ? Theme.match
-                         : cell.peer ? Theme.peer : "transparent"
+                    color: cell.selected || cell.focused ? Theme.selection : cell.matching ? Theme.match
+                         : cell.blocked ? Theme.blocked : cell.peer ? Theme.peer : "transparent"
                     opacity: cell.coloured ? (cell.selected ? 0.6 : 0.45) : 1
                     Behavior on color { ColorAnimation { duration: Theme.quick } }
                 }

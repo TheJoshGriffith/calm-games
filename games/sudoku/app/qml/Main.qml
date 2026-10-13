@@ -16,14 +16,22 @@ AppWindow {
         game: sudoku
         onPlayRequested: window.push(gamePage)
         onSettingsRequested: window.push(settingsPage)
+        onStatsRequested: window.push(statsPage)
     }
 
-    // Development aids: --play <Level> opens a new game, --settings the settings.
-    // --dark shows the dark theme for this run only. With --play,
-    // --demo-input seeds marks, colours, a clash and a multi-selection for
-    // screenshots, and --mode <Number|Corner|Centre|Colour> picks the input mode.
+    // Level ids as Stats records them (and as HomePage starts them).
+    readonly property var levels: ["Easy", "Medium", "Hard", "Expert"]
+
+    // Development aids: --play <Level> opens a new game, --settings the
+    // settings, --stats the statistics. --dark shows the dark theme for this
+    // run only. With --play, --demo-input seeds marks, colours, a clash and a
+    // multi-selection for screenshots, --mode <Number|Corner|Centre|Colour>
+    // picks the input mode, and --focus <digit> focuses a digit with nothing
+    // selected.
     property string themeBeforeDev: ""
     property bool demoPending: false
+    property bool demoInput: false
+    property int demoFocus: 0
 
     Component.onCompleted: {
         const args = Qt.application.arguments
@@ -33,12 +41,17 @@ AppWindow {
         }
         const play = args.indexOf("--play")
         if (play >= 0 && play + 1 < args.length) {
-            demoPending = args.indexOf("--demo-input") >= 0
+            demoInput = args.indexOf("--demo-input") >= 0
+            const focus = args.indexOf("--focus")
+            demoFocus = focus >= 0 && focus + 1 < args.length ? parseInt(args[focus + 1]) : 0
+            demoPending = demoInput || demoFocus > 0
             sudoku.startNewGame(args[play + 1])
             window.push(gamePage)
             seedDemoWhenReady()
         } else if (args.indexOf("--settings") >= 0) {
             window.push(settingsPage)
+        } else if (args.indexOf("--stats") >= 0) {
+            window.push(statsPage)
         }
     }
 
@@ -61,7 +74,12 @@ AppWindow {
         if (!demoPending || !sudoku.active || sudoku.loading)
             return
         demoPending = false
-        seedDemo()
+        if (demoInput)
+            seedDemo()
+        if (demoFocus > 0) {
+            sudoku.clearSelection()
+            sudoku.enter(demoFocus)
+        }
     }
 
     function seedDemo() {
@@ -145,6 +163,15 @@ AppWindow {
         id: settingsPage
         SudokuSettingsPage {
             game: sudoku
+            onBackRequested: window.pop()
+        }
+    }
+
+    Component {
+        id: statsPage
+        StatsPage {
+            gameId: sudoku.gameId
+            levels: window.levels
             onBackRequested: window.pop()
         }
     }
