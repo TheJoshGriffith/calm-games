@@ -15,6 +15,8 @@ class Settings : public QObject {
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(bool soundEnabled READ soundEnabled WRITE setSoundEnabled NOTIFY soundEnabledChanged)
     Q_PROPERTY(qreal volume READ volume WRITE setVolume NOTIFY volumeChanged)
+    // One of SoundBank::themeIds()
+    Q_PROPERTY(QString soundTheme READ soundTheme WRITE setSoundTheme NOTIFY soundThemeChanged)
     Q_PROPERTY(bool hapticsEnabled READ hapticsEnabled WRITE setHapticsEnabled NOTIFY hapticsEnabledChanged)
     // 0 subtle, 1 gentle, 2 firm
     Q_PROPERTY(int hapticsStrength READ hapticsStrength WRITE setHapticsStrength NOTIFY hapticsStrengthChanged)
@@ -29,6 +31,8 @@ public:
     void setSoundEnabled(bool enabled);
     qreal volume() const;
     void setVolume(qreal volume);
+    QString soundTheme() const;
+    void setSoundTheme(const QString& theme);
     bool hapticsEnabled() const;
     void setHapticsEnabled(bool enabled);
     int hapticsStrength() const;
@@ -40,6 +44,7 @@ signals:
     void themeChanged();
     void soundEnabledChanged();
     void volumeChanged();
+    void soundThemeChanged();
     void hapticsEnabledChanged();
     void hapticsStrengthChanged();
     void reduceMotionChanged();

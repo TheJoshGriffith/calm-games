@@ -20,6 +20,8 @@ int minimumClues(Difficulty difficulty) noexcept
     return 17;
 }
 
+// Puzzle codes replay this function from (difficulty, seed). Changing its
+// output in any way requires bumping GeneratorVersion in Generator.h.
 std::optional<Puzzle> generate(Difficulty difficulty, std::uint64_t seed, const GeneratorOptions& options)
 {
     const int floor = minimumClues(difficulty);
