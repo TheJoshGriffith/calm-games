@@ -24,6 +24,12 @@
     <true/>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <!-- Qt Multimedia links capture APIs the game never calls; Apple still
+         requires purpose strings for them. -->
+    <key>NSCameraUsageDescription</key>
+    <string>Sudoku never uses the camera.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Sudoku never uses the microphone.</string>
     <key>UILaunchStoryboardName</key>
     <string>LaunchScreen</string>
     <key>UIRequiredDeviceCapabilities</key>
