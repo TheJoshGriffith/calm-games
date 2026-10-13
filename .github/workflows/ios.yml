@@ -17,6 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # App Store Connect only accepts builds made with the iOS 26 SDK or later.
+      - name: Select Xcode 26
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)"
+          xcodebuild -version
+
       - name: Install Qt for macOS (host tools)
         uses: jurplel/install-qt-action@v4
         with:
