@@ -40,8 +40,10 @@ int main(int argc, char* argv[])
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(1); },
         Qt::QueuedConnection);
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/Sudoku/qml/Main.qml")));
-    if (engine.rootObjects().isEmpty())
+    if (engine.rootObjects().isEmpty()) {
+        qCritical("Main.qml failed to load");
         return 1;
+    }
 
     // Development aid: --screenshot <file.png> saves the window after start-up
     // (combine with --play <Level> or --settings to open that screen).
@@ -60,6 +62,8 @@ int main(int argc, char* argv[])
         QTimer::singleShot(2500, &app, [] {
             if (g_qmlWarnings > 0)
                 qCritical("smoke test: %d QML warning(s)", g_qmlWarnings);
+            else
+                qInfo("smoke test: ok");
             QCoreApplication::exit(g_qmlWarnings > 0 ? 1 : 0);
         });
     }

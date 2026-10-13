@@ -100,3 +100,71 @@ jobs:
             -exportPath "$RUNNER_TEMP/export" "${AUTH[@]}"
 
           rm -f "$KEY_PATH"
+
+  sudoku-simulator:
+    # Launches the real iOS app in the simulator with the QML smoke test, so a
+    # start-up crash or missing QML import fails CI instead of TestFlight.
+    name: Sudoku (iOS simulator launch)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)"
+
+      - name: Install Qt for macOS (host tools)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: mac
+          target: desktop
+          arch: clang_64
+          cache: true
+
+      - name: Remember host Qt
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+
+      - name: Install Qt for iOS
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: mac
+          target: ios
+          arch: ios
+          modules: 'qtmultimedia'
+          cache: true
+
+      - name: Configure
+        run: |
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build-sim -G Xcode \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF
+
+      - name: Build for the simulator
+        run: |
+          xcodebuild -project build-sim/CalmGames.xcodeproj -scheme CalmSudoku \
+            -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-sim/dd CODE_SIGNING_ALLOWED=NO build | tail -n 30
+          exit "${PIPESTATUS[0]}"
+
+      - name: Launch in the simulator
+        run: |
+          APP=$(find build-sim -path '*Release-iphonesimulator/CalmSudoku.app' -type d | head -n 1)
+          echo "App: $APP"
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devs = json.load(sys.stdin)["devices"]
+          print(next(d["udid"] for rt, ds in sorted(devs.items(), reverse=True) if "iOS" in rt for d in ds if d["name"].startswith("iPhone")))')
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+          SIMCTL_CHILD_CALM_SMOKE_TEST=1 \
+            timeout 120 xcrun simctl launch --console-pty --terminate-running-process "$UDID" com.thejoshgriffith.calm.sudoku \
+            2>&1 | tee launch.log || true
+          grep -q "smoke test: ok" launch.log
+
+      - name: Crash reports
+        if: failure()
+        run: |
+          ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head
+          for f in $(ls -t ~/Library/Logs/DiagnosticReports/CalmSudoku* 2>/dev/null | head -n 1); do head -c 20000 "$f"; done
