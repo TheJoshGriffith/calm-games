@@ -54,6 +54,9 @@ Rules:
 Start `Main.qml` with `AppWindow { session: yourGame; initialItem: ... }`. It
 provides the page stack, transitions, Android back handling, pausing in the
 background, and the wiring from `feedback` to `SoundBank` and `Haptics`.
+Every feedback event therefore plays a sound and a haptic at the player's
+chosen strength (Settings: Haptics on/off, Subtle/Gentle/Firm); games add
+nothing for haptics beyond calling `emitFeedback`.
 
 Use the framework components instead of raw controls so every game looks and
 feels the same: `CalmPage`, `CalmText`, `CardButton`, `IconButton`,

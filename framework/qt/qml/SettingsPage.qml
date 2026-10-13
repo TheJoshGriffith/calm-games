@@ -109,6 +109,37 @@ CalmPage {
                     checked: Settings.hapticsEnabled
                     onToggled: Settings.hapticsEnabled = checked
                 }
+
+                Item {
+                    width: parent.width
+                    height: 60
+                    CalmText {
+                        id: strengthLabel
+                        anchors.left: parent.left
+                        anchors.leftMargin: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("Strength")
+                        font.weight: Font.DemiBold
+                    }
+                    SegmentedControl {
+                        anchors.left: strengthLabel.right
+                        anchors.right: parent.right
+                        anchors.leftMargin: 16
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 44
+                        color: Theme.ground
+                        model: [qsTr("Subtle"), qsTr("Gentle"), qsTr("Firm")]
+                        currentIndex: Settings.hapticsStrength
+                        enabled: Settings.hapticsEnabled
+                        opacity: enabled ? 1 : 0.4
+                        Accessible.name: qsTr("Haptic strength")
+                        onActivated: (index) => {
+                            Settings.hapticsStrength = index
+                            Haptics.play("tap")
+                        }
+                    }
+                }
             }
 
             Column {
