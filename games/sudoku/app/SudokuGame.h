@@ -33,6 +33,10 @@ class SudokuGame : public GameSession {
     // When on, tapping a cell adds it to (or removes it from) the selection.
     Q_PROPERTY(bool multiSelect READ multiSelect WRITE setMultiSelect NOTIFY multiSelectChanged)
     Q_PROPERTY(int inputMode READ inputMode WRITE setInputMode NOTIFY inputModeChanged)
+    // With nothing selected, pressing a digit focuses it (0 = none): the board
+    // highlights that digit and shades every cell it can no longer go in.
+    // Selecting a cell, or pressing the same digit again, clears it.
+    Q_PROPERTY(int focusDigit READ focusDigit WRITE setFocusDigit NOTIFY focusDigitChanged)
     Q_PROPERTY(QString technique READ technique NOTIFY stateChanged)
 
     Q_PROPERTY(bool highlightPeers READ highlightPeers WRITE setHighlightPeers NOTIFY optionsChanged)
@@ -67,6 +71,8 @@ public:
     void setMultiSelect(bool on);
     int inputMode() const { return m_inputMode; }
     void setInputMode(int mode);
+    int focusDigit() const { return m_focusDigit; }
+    void setFocusDigit(int digit);
     QString technique() const;
 
     bool highlightPeers() const { return option(QStringLiteral("highlightPeers"), true); }
@@ -94,6 +100,7 @@ public:
 
     // Applies `digit` to the selection according to the input mode: places it
     // (Number), toggles a corner or centre mark, or paints colour `digit`.
+    // With nothing selected (outside Colour mode) it toggles focusDigit.
     Q_INVOKABLE void enter(int digit);
     // Colour 1-9 paints the selection (or clears it if every selected cell
     // already has that colour); 0 clears colours.
@@ -111,6 +118,7 @@ signals:
     void selectedChanged();
     void multiSelectChanged();
     void inputModeChanged();
+    void focusDigitChanged();
     void optionsChanged();
 
 protected:
@@ -154,6 +162,7 @@ private:
     QList<int> m_selection;
     bool m_multiSelect = false;
     int m_inputMode = NumberMode;
+    int m_focusDigit = 0;
     std::optional<sudoku::Difficulty> m_waitingFor;
     QHash<int, QList<sudoku::Puzzle>> m_buffer;
     QHash<int, int> m_inFlight;

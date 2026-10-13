@@ -23,13 +23,17 @@ CalmPage {
         onClicked: page.settingsRequested()
     }
 
-    // A tap on the page outside the grid and the controls clears the selection.
+    // A tap on the page outside the grid and the controls clears the selection
+    // and any focused digit.
     // It sits under the page's own background, which takes no input.
     MouseArea {
         parent: page
         anchors.fill: parent
         z: -1
-        onClicked: page.game.clearSelection()
+        onClicked: {
+            page.game.clearSelection()
+            page.game.focusDigit = 0
+        }
     }
 
     Column {

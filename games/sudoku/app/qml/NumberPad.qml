@@ -34,11 +34,16 @@ Column {
                 required property int index
                 readonly property int digit: index + 1
                 readonly property int remainingCount: pad.game.remaining.length === 9 ? pad.game.remaining[index] : 9
+                // The digit the board is highlighting with nothing selected.
+                readonly property bool focused: !pad.colourMode && pad.game.selection.length === 0
+                                                && pad.game.focusDigit === digit
 
                 width: (pad.width - 2 * pad.spacing) / 3
                 height: pad.colourMode ? pad.swatchHeight : pad.keyHeight
                 text: digit
+                // A finished digit can still be focused, to see where it sits.
                 enabled: pad.colourMode || pad.mode !== SudokuGame.NumberMode || remainingCount > 0
+                         || pad.game.selection.length === 0
                 Accessible.name: pad.colourMode ? CellColours.names[index]
                                : pad.mode === SudokuGame.CornerMode ? qsTr("Corner mark %1").arg(digit)
                                : pad.mode === SudokuGame.CentreMode ? qsTr("Centre mark %1").arg(digit)
@@ -73,10 +78,12 @@ Column {
                 background: Rectangle {
                     radius: Theme.radiusSmall
                     color: pad.colourMode ? CellColours.colour(key.digit)
-                         : key.down ? Theme.subtle : Theme.raised
-                    border.color: Theme.line
-                    border.width: pad.colourMode ? 1 : 0
-                    opacity: key.enabled ? (pad.colourMode && key.down ? 0.7 : 1) : 0.35
+                         : key.focused ? Theme.selection : key.down ? Theme.subtle : Theme.raised
+                    border.color: key.focused ? Theme.accent : Theme.line
+                    border.width: pad.colourMode ? 1 : key.focused ? 2 : 0
+                    // Finished digits stay dimmed even while they can be focused.
+                    opacity: !key.enabled || (pad.mode === SudokuGame.NumberMode && key.remainingCount === 0 && !key.focused) ? 0.35
+                           : pad.colourMode && key.down ? 0.7 : 1
                     Behavior on color { ColorAnimation { duration: Theme.quick } }
                 }
             }

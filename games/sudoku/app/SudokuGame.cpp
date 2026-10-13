@@ -107,6 +107,8 @@ void SudokuGame::setSelected(int cell)
     if (next == m_selection)
         return;
     m_selection = next;
+    if (!m_selection.isEmpty())
+        setFocusDigit(0);
     emit selectedChanged();
 }
 
@@ -125,6 +127,7 @@ void SudokuGame::addToSelection(int cell)
         return;
     m_selection.removeAll(cell);
     m_selection.append(cell);
+    setFocusDigit(0);
     emit selectedChanged();
 }
 
@@ -148,6 +151,14 @@ void SudokuGame::setInputMode(int mode)
         return;
     m_inputMode = mode;
     emit inputModeChanged();
+}
+
+void SudokuGame::setFocusDigit(int digit)
+{
+    if (digit < 0 || digit > 9 || digit == m_focusDigit)
+        return;
+    m_focusDigit = digit;
+    emit focusDigitChanged();
 }
 
 QString SudokuGame::technique() const
@@ -208,7 +219,14 @@ void SudokuGame::setPadOffset(qreal offset)
 
 void SudokuGame::enter(int digit)
 {
-    if (!canPlay() || digit < 1 || digit > 9 || m_selection.isEmpty())
+    if (!active() || digit < 1 || digit > 9)
+        return;
+    if (m_selection.isEmpty()) {
+        if (m_inputMode != ColourMode)
+            setFocusDigit(digit == m_focusDigit ? 0 : digit);
+        return;
+    }
+    if (!canPlay())
         return;
 
     switch (m_inputMode) {
@@ -501,6 +519,7 @@ void SudokuGame::resetInput()
 {
     setInputMode(NumberMode);
     setMultiSelect(false);
+    setFocusDigit(0);
 }
 
 void SudokuGame::startWith(const sudoku::Puzzle& puzzle)
