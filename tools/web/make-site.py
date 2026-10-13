@@ -10,6 +10,7 @@ and anything the game adds in games/<name>/app/web/site/ (e.g. _redirects).
 """
 
 import argparse
+import os
 import re
 import shutil
 import sys
@@ -80,8 +81,21 @@ def main():
     if extra.is_dir():
         shutil.copytree(extra, out, dirs_exist_ok=True)
 
-    for f in sorted(out.iterdir()):
-        print(f"{f.stat().st_size:>12}  {f.name}")
+    # Apple's Universal Links file names the app by team ID, which comes from
+    # the APPLE_TEAM_ID environment variable; without it the file is left out.
+    aasa = out / ".well-known" / "apple-app-site-association"
+    if aasa.exists():
+        team = os.environ.get("APPLE_TEAM_ID", "").strip()
+        if team:
+            aasa.write_text(aasa.read_text().replace("@APPLE_TEAM_ID@", team))
+        else:
+            print("note: APPLE_TEAM_ID is not set, the site has no apple-app-site-association", file=sys.stderr)
+            aasa.unlink()
+            if not any(aasa.parent.iterdir()):
+                aasa.parent.rmdir()
+
+    for f in sorted(p for p in out.rglob("*") if p.is_file()):
+        print(f"{f.stat().st_size:>12}  {f.relative_to(out)}")
 
 
 if __name__ == "__main__":

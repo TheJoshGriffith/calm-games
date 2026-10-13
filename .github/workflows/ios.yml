@@ -116,6 +116,17 @@ jobs:
             -archivePath "$RUNNER_TEMP/App.xcarchive" CODE_SIGNING_ALLOWED=NO archive | tail -n 50
           test "${PIPESTATUS[0]}" -eq 0
 
+          # An unsigned archive carries no entitlements, so sign the archived
+          # app ad hoc (no certificate) with the game's entitlements; the
+          # export re-signs it for distribution and keeps them. The App ID
+          # needs the matching capability (e.g. Associated Domains) enabled.
+          ENTITLEMENTS="games/${{ matrix.name }}/app/ios/app.entitlements"
+          if [ -f "$ENTITLEMENTS" ]; then
+            APP="$RUNNER_TEMP/App.xcarchive/Products/Applications/${{ matrix.scheme }}.app"
+            codesign --force --sign - --entitlements "$ENTITLEMENTS" --generate-entitlement-der "$APP"
+            codesign -d --entitlements - "$APP"
+          fi
+
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

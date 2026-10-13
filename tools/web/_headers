@@ -16,6 +16,11 @@
 /s/*
   Cache-Control: no-cache
 
+# Apple fetches this for Universal Links; it must be JSON and never redirect.
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600
+
 /*.wasm
   Content-Type: application/wasm
   Cache-Control: public, max-age=31536000, immutable
