@@ -105,7 +105,7 @@ jobs:
             -DQT_HOST_PATH="$QT_HOST_PATH" \
             -DQT_WASM_EXTRA_EXPORTED_METHODS="ENV,FS,addRunDependency,removeRunDependency" \
             -DCMAKE_EXE_LINKER_FLAGS="-lidbfs.js" \
-            -DCALM_BUILD_APPS=ON -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF 2>&1 | tee configure.log \
+            -DCALM_GAMES=${{ matrix.name }} -DCALM_BUILD_APPS=ON -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF 2>&1 | tee configure.log \
           || { grep -A4 "CMake Error" configure.log | head -n 30 | sed 's/^/::error::/'; exit 1; }
 
       - name: Build

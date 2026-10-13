@@ -33,9 +33,16 @@ add_subdirectory(framework)
 
 # Every folder under games/ with a CMakeLists.txt is a game. Adding a game
 # needs no change here, so games can be developed in parallel.
+# CALM_GAMES limits the build to some of them (e.g. -DCALM_GAMES=sudoku), so
+# one game's build problem can't stop another's (the web build uses this).
+set(CALM_GAMES "" CACHE STRING "Games to build (folder names under games/); empty builds all")
 file(GLOB CALM_GAME_DIRS LIST_DIRECTORIES true ${CMAKE_CURRENT_SOURCE_DIR}/games/*)
 list(SORT CALM_GAME_DIRS)
 foreach(dir IN LISTS CALM_GAME_DIRS)
+    get_filename_component(game ${dir} NAME)
+    if(CALM_GAMES AND NOT game IN_LIST CALM_GAMES)
+        continue()
+    endif()
     if(EXISTS ${dir}/CMakeLists.txt)
         add_subdirectory(${dir})
     endif()

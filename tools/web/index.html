@@ -176,7 +176,7 @@
       if (params.has('smoke'))
         environment.CALM_SMOKE_TEST = '1';
 
-      window.calm = { state: 'loading', exit: null, storage: 'none' };
+      window.calm = { state: 'loading', exit: null, storage: 'none', events: [] };
 
       // Saves, settings and statistics are files under the app's home
       // directory. Keep that directory in IndexedDB (Emscripten's IDBFS):
@@ -200,6 +200,7 @@
         FS.syncfs(true, error => {
           if (error) console.warn('Could not load saved progress:', error);
           window.calm.storage = error ? 'failed' : 'indexeddb';
+          window.calm.events.push('storage loaded');
           instance.removeRunDependency('calm-home');
         });
         // Belt and braces for writes autoPersist hasn't flushed yet.
@@ -207,6 +208,18 @@
         document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
         window.addEventListener('pagehide', flush);
         window.calm.flush = () => new Promise(resolve => FS.syncfs(false, resolve));
+        // Lists the saved files, for checking persistence from devtools or tests.
+        window.calm.files = (dir = home) => {
+          const out = [];
+          for (const name of FS.readdir(dir)) {
+            if (name === '.' || name === '..') continue;
+            const path = dir + '/' + name;
+            const stat = FS.stat(path);
+            if (FS.isDir(stat.mode)) out.push(...window.calm.files(path));
+            else out.push(path + ' ' + stat.size);
+          }
+          return out;
+        };
       }
 
       async function start() {
@@ -223,6 +236,7 @@
               environment: environment,
               onLoaded: () => {
                 window.calm.state = 'running';
+                window.calm.events.push('running');
                 splash.classList.add('done');
                 setTimeout(() => splash.remove(), 400);
               },
