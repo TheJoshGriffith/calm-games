@@ -22,6 +22,13 @@ struct GeneratorOptions {
     bool symmetric = true; // remove cells in 180-degree rotational pairs
 };
 
+// Version of generate()'s output, embedded in puzzle codes (see Share.h).
+// Anything that changes which puzzle a (difficulty, seed) produces -- the
+// RNG, randomSolvedGrid, removal order, grader rules, clue floors, default
+// options -- MUST bump this, or old codes will silently open different
+// puzzles. The golden test in engine_tests.cpp guards against accidents.
+inline constexpr int GeneratorVersion = 1;
+
 // Generates a puzzle with exactly one solution whose logical grade matches
 // `difficulty`. Deterministic: the same (difficulty, seed) always returns the
 // same puzzle. Returns nullopt only if no attempt hit the target grade.
