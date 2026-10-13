@@ -165,6 +165,51 @@ private slots:
         QVERIFY(game.selection().isEmpty());
     }
 
+    void digitFocusWithNothingSelected()
+    {
+        SudokuGame game;
+        startAndWait(game, QStringLiteral("Easy"));
+        QSignalSpy moves(&game, &SudokuGame::stateChanged);
+
+        // Nothing selected: a digit focuses instead of placing, and pressing
+        // it again (or another digit) toggles or moves the focus.
+        game.enter(4);
+        QCOMPARE(game.focusDigit(), 4);
+        QCOMPARE(moves.count(), 0);
+        QVERIFY(!game.canUndo());
+        game.enter(7);
+        QCOMPARE(game.focusDigit(), 7);
+        game.enter(7);
+        QCOMPARE(game.focusDigit(), 0);
+
+        // Mark modes focus too; Colour mode doesn't.
+        game.setInputMode(SudokuGame::CornerMode);
+        game.enter(2);
+        QCOMPARE(game.focusDigit(), 2);
+        game.setInputMode(SudokuGame::ColourMode);
+        game.enter(5);
+        QCOMPARE(game.focusDigit(), 2);
+        game.setInputMode(SudokuGame::NumberMode);
+
+        // Selecting a cell clears the focus; the digit then places as usual.
+        const int cell = emptyCells(game).first();
+        game.selectOnly(cell);
+        QCOMPARE(game.focusDigit(), 0);
+        game.enter(3);
+        QCOMPARE(game.cells()[cell].toMap()[QStringLiteral("digit")].toInt(), 3);
+
+        game.clearSelection();
+        game.enter(6);
+        game.addToSelection(cell);
+        QCOMPARE(game.focusDigit(), 0);
+
+        // A new game starts unfocused.
+        game.clearSelection();
+        game.enter(6);
+        startAndWait(game, QStringLiteral("Easy"));
+        QCOMPARE(game.focusDigit(), 0);
+    }
+
     void multiCellEntryIsOneStep()
     {
         SudokuGame game;
