@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Templates as T
 import Calm
 import Sudoku
 
@@ -51,6 +52,57 @@ CalmPage {
             onClicked: page.settingsRequested()
         }
     ]
+
+    // Keyboard play (desktop and the web): 1-9 enter a digit (or paint a
+    // colour) just like the pad, Backspace, Delete or 0 erase, the arrow keys
+    // move the selection and Escape clears it. Shortcuts give way to text
+    // fields and stay off while a sheet is open.
+    readonly property bool keysEnabled: T.StackView.status === T.StackView.Active
+                                        && !shareSheet.opened && !page.game.loading
+
+    function moveSelection(dx, dy) {
+        const from = page.game.selected
+        if (from < 0) {
+            page.game.selectOnly(40)
+            return
+        }
+        const row = Math.max(0, Math.min(8, Math.floor(from / 9) + dy))
+        const col = Math.max(0, Math.min(8, from % 9 + dx))
+        page.game.selectOnly(row * 9 + col)
+    }
+
+    Instantiator {
+        model: 9
+        delegate: Shortcut {
+            required property int index
+            sequences: [String(index + 1), "Num+" + (index + 1)]
+            enabled: page.keysEnabled
+            onActivated: page.game.inputMode === SudokuGame.ColourMode ? page.game.paint(index + 1)
+                                                                     : page.game.enter(index + 1)
+        }
+    }
+    Shortcut {
+        sequences: ["Backspace", "Delete", "0"]
+        enabled: page.keysEnabled
+        onActivated: page.game.inputMode === SudokuGame.ColourMode ? page.game.paint(0) : page.game.erase()
+    }
+    Shortcut {
+        sequences: [StandardKey.Undo]
+        enabled: page.keysEnabled
+        onActivated: page.game.undo()
+    }
+    Shortcut { sequence: "Left"; enabled: page.keysEnabled; onActivated: page.moveSelection(-1, 0) }
+    Shortcut { sequence: "Right"; enabled: page.keysEnabled; onActivated: page.moveSelection(1, 0) }
+    Shortcut { sequence: "Up"; enabled: page.keysEnabled; onActivated: page.moveSelection(0, -1) }
+    Shortcut { sequence: "Down"; enabled: page.keysEnabled; onActivated: page.moveSelection(0, 1) }
+    Shortcut {
+        sequence: "Escape"
+        enabled: page.keysEnabled
+        onActivated: {
+            page.game.clearSelection()
+            page.game.focusDigit = 0
+        }
+    }
 
     // A tap on the page outside the grid and the controls clears the selection
     // and any focused digit.
