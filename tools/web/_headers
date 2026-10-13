@@ -16,6 +16,11 @@
 /s/*
   Cache-Control: no-cache
 
+# Apple fetches this for Universal Links; it must be JSON and never redirect.
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600
+
 # The app's code, gzipped by make-site.py and unzipped by the page itself.
 # It is an ordinary file, deliberately without Content-Encoding: gzip, so
 # browsers hand the page the gzip bytes. application/gzip is not a type

@@ -184,7 +184,46 @@
       if (params.has('smoke'))
         environment.CALM_SMOKE_TEST = '1';
 
-      window.calm = { state: 'loading', exit: null, storage: 'none', events: [] };
+      window.calm = { state: 'loading', exit: null, storage: 'none', events: [], shared: [] };
+
+      // Sharing, called by the app (framework/qt/src/platform/Platform_generic.cpp).
+      // copy(text) puts text on the clipboard: the Clipboard API, else a
+      // hidden text area and execCommand('copy').
+      function copyText(text) {
+        const fallback = () => {
+          const area = document.createElement('textarea');
+          area.value = text;
+          area.setAttribute('readonly', '');
+          area.style.position = 'fixed';
+          area.style.opacity = '0';
+          document.body.appendChild(area);
+          area.select();
+          try { document.execCommand('copy'); } catch (error) { console.warn('Could not copy:', error); }
+          area.remove();
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText)
+          navigator.clipboard.writeText(text).catch(fallback);
+        else
+          fallback();
+      }
+      window.calm.copy = copyText;
+      // share(text, copied) opens the browser's share sheet and returns true,
+      // or copies text and returns false where there is none. If the browser
+      // refuses the share sheet afterwards, it copies then and calls copied().
+      window.calm.share = (text, copied) => {
+        window.calm.shared.push(text);
+        const data = { text: text };
+        if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
+          navigator.share(data).catch(error => {
+            if (error && error.name === 'AbortError') return; // the player closed it
+            copyText(text);
+            copied();
+          });
+          return true;
+        }
+        copyText(text);
+        return false;
+      };
 
       // Saves, settings and statistics are files under the app's home
       // directory. Keep that directory in IndexedDB (Emscripten's IDBFS): load

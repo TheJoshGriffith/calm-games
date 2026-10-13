@@ -111,10 +111,50 @@ applies its rewrites.
 
 ## Sudoku share links
 
-`games/sudoku/app/web/site/_redirects` serves `index.html` for
-`https://sudoku.gwynant.app/s/<payload>`. It is a rewrite, so the address bar
-keeps the link. The page passes the payload to the app as `--share <payload>`.
-`main.cpp` only logs it for now; opening a shared board will hook in there.
+Every Sudoku game can be shared from the share button in the game's header:
+as its puzzle code (`H1-3KX9QZ0A`, typed in under "Enter a puzzle code" on
+the home screen) or as a link, `https://sudoku.gwynant.app/s/<payload>`, to
+the starting board or to the board with the player's digits, marks and
+colours (format in `games/sudoku/engine/include/sudoku/Share.h`).
+
+- **Web.** `games/sudoku/app/web/site/_redirects` serves `index.html` for
+  `/s/*`. It is a rewrite, so the address bar keeps the link. The page passes
+  the payload to the app as `--share <payload>`, and `main.cpp` opens the
+  board (`SudokuGame::openShared`). Sharing uses the browser's share sheet
+  (`navigator.share`) where there is one, else copies the link and shows
+  "Link copied". The smoke test opens a link with progress, checks the board
+  is on screen, and shares it on.
+- **iOS.** The share button opens the system share sheet. A tapped link
+  opens the web app in Safari until Universal Links are set up (below);
+  after that, iOS hands it to the app (`QDesktopServices` URL handler in
+  `main.cpp`).
+- **Desktop.** Sharing copies the link. `CalmSudoku --share <link or payload>`
+  opens one.
+
+### Universal Links (not set up yet)
+
+For a tapped link to open the iOS app instead of Safari:
+
+1. **Entitlement.** `com.apple.developer.associated-domains` =
+   `applinks:sudoku.gwynant.app` in an entitlements file set as
+   `CODE_SIGN_ENTITLEMENTS` on the iOS target.
+2. **App ID.** Turn on Associated Domains for `com.thejoshgriffith.calm.sudoku`
+   in Certificates, Identifiers & Profiles, so the App Store profile that the
+   export makes includes it.
+3. **Signing.** The archive is built with `CODE_SIGNING_ALLOWED=NO` (see
+   `ios.yml`), and entitlements live in the code signature, so an unsigned
+   archive carries none and `-exportArchive` signs the app without the
+   entitlement. The archive needs the entitlements in a signature that uses
+   no certificate: ad-hoc sign the archived app before exporting, e.g.
+   `codesign --force --sign - --entitlements Sudoku.entitlements
+   "$RUNNER_TEMP/App.xcarchive/Products/Applications/CalmSudoku.app"`. The export
+   then re-signs with the cloud distribution certificate and keeps them.
+   Check the result with `codesign -d --entitlements - <app>` on the exported
+   `.ipa`.
+4. **Site.** Serve `https://sudoku.gwynant.app/.well-known/apple-app-site-association`
+   (no redirect, `Content-Type: application/json`, via `_headers`):
+   `{"applinks":{"details":[{"appIDs":["<TEAM_ID>.com.thejoshgriffith.calm.sudoku"],"components":[{"/":"/s/*"}]}]}}`.
+   The web workflow can write it from the `APPLE_TEAM_ID` secret.
 
 ## Setting up Cloudflare (Josh)
 
@@ -136,4 +176,5 @@ keeps the link. The page passes the payload to the app as `--share <payload>`.
    CNAME record and certificate are added for you. Until then each game is at
    `https://gwynant-<name>.pages.dev`.
 
-Nothing in the code depends on the domain names; only these docs mention them.
+Only Sudoku's share links depend on a domain name:
+`SudokuGame::ShareUrlBase` is `https://sudoku.gwynant.app/s/`.

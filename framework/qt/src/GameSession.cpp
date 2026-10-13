@@ -54,6 +54,11 @@ void GameSession::beginGame()
     updateTimer();
 }
 
+void GameSession::cancelNewGame()
+{
+    setLoading(false);
+}
+
 bool GameSession::resume()
 {
     const QVariantMap saved = SaveStore::load(gameId());

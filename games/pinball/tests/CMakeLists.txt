@@ -1,0 +1,11 @@
+add_executable(pinball_engine_tests engine_tests.cpp)
+target_link_libraries(pinball_engine_tests PRIVATE Pinball::Engine)
+add_test(NAME pinball_engine_tests COMMAND pinball_engine_tests)
+
+if(CALM_BUILD_APPS)
+    add_executable(pinball_game_tests pinball_game_tests.cpp ../app/PinballGame.h ../app/PinballGame.cpp)
+    target_include_directories(pinball_game_tests PRIVATE ../app)
+    target_link_libraries(pinball_game_tests PRIVATE Pinball::Engine calm_framework Qt6::Test)
+    add_test(NAME pinball_game_tests COMMAND pinball_game_tests)
+    set_tests_properties(pinball_game_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()

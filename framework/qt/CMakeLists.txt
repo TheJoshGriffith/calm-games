@@ -27,6 +27,7 @@ qt_add_qml_module(calm_framework
         src/Settings.h src/Settings.cpp
         src/SaveStore.h src/SaveStore.cpp
         src/Stats.h src/Stats.cpp
+        src/Sharing.h src/Sharing.cpp
     QML_FILES
         qml/Theme.qml
         qml/Icons.qml
@@ -42,6 +43,9 @@ qt_add_qml_module(calm_framework
         qml/SettingsGroup.qml
         qml/SettingsPage.qml
         qml/StatsPage.qml
+        qml/BottomSheet.qml
+        qml/CalmTextField.qml
+        qml/Toast.qml
     RESOURCES
         fonts/Nunito-Regular.ttf fonts/Nunito-SemiBold.ttf fonts/Nunito-Bold.ttf fonts/Nunito-ExtraBold.ttf
         ${calm_sounds}
@@ -72,7 +76,7 @@ if(NOT QT6_IS_SHARED_LIBS_BUILD)
     endforeach()
 endif()
 
-# Platform hooks (audio session, haptics).
+# Platform hooks (audio session, haptics, sharing).
 if(IOS)
     target_sources(calm_framework PRIVATE src/platform/Platform.h src/platform/Platform_ios.mm)
     set_source_files_properties(src/platform/Platform_ios.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")

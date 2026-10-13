@@ -3,8 +3,9 @@ import QtQuick.Templates as T
 import Calm
 
 // The top-level window of every Calm game: a page stack with calm
-// transitions, the theme background, and the wiring from the active
-// GameSession's feedback events to sounds and haptics.
+// transitions, the theme background, the wiring from the active
+// GameSession's feedback events to sounds and haptics, and short notes
+// (showNote(), and "Link copied" whenever Sharing falls back to the clipboard).
 T.ApplicationWindow {
     id: window
 
@@ -19,6 +20,8 @@ T.ApplicationWindow {
 
     function push(item, properties) { return stack.push(item, properties || {}) }
     function pop() { return stack.pop() }
+    // A short note over everything, fading away by itself.
+    function showNote(message) { toast.show(message) }
 
     T.StackView {
         id: stack
@@ -52,6 +55,18 @@ T.ApplicationWindow {
         }
         replaceEnter: pushEnter
         replaceExit: pushExit
+    }
+
+    Toast {
+        id: toast
+        anchors.fill: parent
+        z: 100
+    }
+
+    // A share that had no share sheet to go to landed on the clipboard.
+    Connections {
+        target: Sharing
+        function onCopiedToClipboard() { toast.show(qsTr("Link copied")) }
     }
 
     Binding { target: SoundBank; property: "enabled"; value: Settings.soundEnabled }

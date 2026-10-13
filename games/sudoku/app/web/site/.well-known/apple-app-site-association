@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["@APPLE_TEAM_ID@.com.thejoshgriffith.calm.sudoku"],
+        "components": [{ "/": "/s/*", "comment": "Share links open the board in the app" }]
+      }
+    ]
+  }
+}
