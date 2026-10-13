@@ -1,5 +1,7 @@
 #include "Haptics.h"
 
+#include "platform/Platform.h"
+
 void Haptics::setEnabled(bool enabled)
 {
     if (m_enabled == enabled)
@@ -12,7 +14,5 @@ void Haptics::play(const QString& event)
 {
     if (!m_enabled)
         return;
-    // Desktop builds have no haptic hardware. Mobile implementations map
-    // "tap"/"soft" to a light impact, "complete" to medium, "win" to success.
-    Q_UNUSED(event);
+    calm::platform::haptic(event);
 }

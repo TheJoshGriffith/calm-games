@@ -1,0 +1,96 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  sudoku:
+    name: Sudoku (iOS)
+    runs-on: macos-15
+    env:
+      # Signing and upload happen only on main, once the App Store Connect
+      # secrets exist; pull requests just check that the iOS build compiles.
+      CAN_UPLOAD: ${{ github.event_name != 'pull_request' && secrets.ASC_KEY_ID != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt for macOS (host tools)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: mac
+          target: desktop
+          arch: clang_64
+          cache: true
+
+      - name: Remember host Qt
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+
+      - name: Install Qt for iOS
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: mac
+          target: ios
+          arch: ios
+          modules: 'qtmultimedia'
+          cache: true
+
+      - name: Configure
+        run: |
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build-ios -G Xcode \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF \
+            -DCALM_APPLE_TEAM_ID="${{ secrets.APPLE_TEAM_ID }}" \
+            -DCALM_BUILD_NUMBER="${{ github.run_number }}"
+
+      - name: Build (unsigned)
+        if: env.CAN_UPLOAD != 'true'
+        run: |
+          xcodebuild -project build-ios/CalmGames.xcodeproj -scheme CalmSudoku \
+            -configuration Release -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 50
+          exit "${PIPESTATUS[0]}"
+
+      - name: Archive and upload to TestFlight
+        if: env.CAN_UPLOAD == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s' "$ASC_KEY_P8" > "$KEY_PATH"
+          AUTH=(-allowProvisioningUpdates
+                -authenticationKeyPath "$KEY_PATH"
+                -authenticationKeyID "$ASC_KEY_ID"
+                -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+
+          xcodebuild -project build-ios/CalmGames.xcodeproj -scheme CalmSudoku \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Sudoku.xcarchive" "${AUTH[@]}" archive | tail -n 50
+          test "${PIPESTATUS[0]}" -eq 0
+
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Sudoku.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" "${AUTH[@]}"
+
+          rm -f "$KEY_PATH"

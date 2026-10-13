@@ -22,6 +22,9 @@ if(CALM_BUILD_APPS)
     qt_standard_project_setup()
 endif()
 
+# Xcode schemes are needed to archive apps for the App Store.
+set(CMAKE_XCODE_GENERATE_SCHEME ON)
+
 if(CALM_BUILD_TESTS)
     enable_testing()
 endif()

@@ -42,3 +42,12 @@ qt_add_qml_module(calm_framework
 
 target_include_directories(calm_framework PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(calm_framework PUBLIC Calm::Core Qt6::Quick Qt6::QuickControls2 Qt6::Multimedia)
+
+# Platform hooks (audio session, haptics).
+if(IOS)
+    target_sources(calm_framework PRIVATE src/platform/Platform.h src/platform/Platform_ios.mm)
+    set_source_files_properties(src/platform/Platform_ios.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(calm_framework PUBLIC "-framework AVFoundation" "-framework UIKit")
+else()
+    target_sources(calm_framework PRIVATE src/platform/Platform.h src/platform/Platform_generic.cpp)
+endif()

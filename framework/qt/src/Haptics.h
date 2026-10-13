@@ -3,9 +3,8 @@
 #include <QObject>
 #include <QQmlEngine>
 
-// Light haptic feedback for GameSession::feedback events. Platform
-// implementations (UIImpactFeedbackGenerator on iOS, Vibrator on Android)
-// arrive with the mobile build pipeline; elsewhere this is a no-op.
+// Light haptic feedback for GameSession::feedback events: implemented on iOS
+// (UIKit feedback generators); a no-op on desktop, Android to follow.
 class Haptics : public QObject {
     Q_OBJECT
     QML_ELEMENT
