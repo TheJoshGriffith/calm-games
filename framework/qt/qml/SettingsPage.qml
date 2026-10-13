@@ -104,6 +104,65 @@ CalmPage {
                     }
                 }
 
+                // Sound theme: one chip per theme; picking one plays a sample.
+                Column {
+                    width: parent.width
+                    topPadding: 10
+                    bottomPadding: 12
+                    spacing: 10
+                    enabled: Settings.soundEnabled
+                    opacity: enabled ? 1 : 0.4
+
+                    CalmText {
+                        x: 16
+                        text: qsTr("Sound theme")
+                        font.weight: Font.DemiBold
+                    }
+
+                    Flow {
+                        x: 12
+                        width: parent.width - 24
+                        spacing: 8
+
+                        Repeater {
+                            model: SoundBank.themes
+
+                            T.AbstractButton {
+                                id: themeChip
+                                required property var modelData
+
+                                implicitWidth: chipLabel.implicitWidth + 32
+                                implicitHeight: 44
+                                text: modelData.name
+                                checked: Settings.soundTheme === modelData.id
+                                Accessible.role: Accessible.RadioButton
+                                Accessible.name: text
+                                Accessible.checked: checked
+                                onClicked: {
+                                    Settings.soundTheme = modelData.id
+                                    SoundBank.preview()
+                                }
+
+                                contentItem: CalmText {
+                                    id: chipLabel
+                                    text: themeChip.text
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    font.pixelSize: 15
+                                    font.weight: Font.Bold
+                                    color: themeChip.checked ? Theme.ink : Theme.muted
+                                }
+
+                                background: Rectangle {
+                                    radius: height / 2
+                                    color: themeChip.checked ? Theme.selection : Theme.ground
+                                    Behavior on color { ColorAnimation { duration: Theme.quick } }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 ToggleRow {
                     text: qsTr("Haptics")
                     checked: Settings.hapticsEnabled

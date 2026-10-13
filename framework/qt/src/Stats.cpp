@@ -34,10 +34,13 @@ void Stats::recordStarted(const QString& gameId, const QString& level)
     });
 }
 
-void Stats::recordWon(const QString& gameId, const QString& level, int seconds)
+void Stats::recordWon(const QString& gameId, const QString& level, int seconds, bool usedHints)
 {
-    update(gameId, level, [seconds](QVariantMap& e) {
+    update(gameId, level, [seconds, usedHints](QVariantMap& e) {
         e[QStringLiteral("won")] = e.value(QStringLiteral("won")).toInt() + 1;
+        // Stats stored before hint tracking simply lack this key (read as 0).
+        if (!usedHints)
+            e[QStringLiteral("wonNoHints")] = e.value(QStringLiteral("wonNoHints")).toInt() + 1;
         e[QStringLiteral("totalSeconds")] = e.value(QStringLiteral("totalSeconds")).toLongLong() + seconds;
         const int best = e.value(QStringLiteral("bestSeconds")).toInt();
         if (best == 0 || seconds < best)
@@ -52,10 +55,13 @@ void Stats::recordWon(const QString& gameId, const QString& level, int seconds)
 QVariantMap Stats::forLevel(const QString& gameId, const QString& level)
 {
     const QVariantMap e = SaveStore::load(keyFor(gameId)).value(level).toMap();
+    const int played = e.value(QStringLiteral("played")).toInt();
     const int won = e.value(QStringLiteral("won")).toInt();
     QVariantMap out;
-    out[QStringLiteral("played")] = e.value(QStringLiteral("played")).toInt();
+    out[QStringLiteral("played")] = played;
     out[QStringLiteral("won")] = won;
+    out[QStringLiteral("wonNoHints")] = e.value(QStringLiteral("wonNoHints")).toInt();
+    out[QStringLiteral("winRate")] = played > 0 ? std::clamp(double(won) / played, 0.0, 1.0) : 0.0;
     out[QStringLiteral("bestSeconds")] = e.value(QStringLiteral("bestSeconds")).toInt();
     out[QStringLiteral("averageSeconds")] = won ? int(e.value(QStringLiteral("totalSeconds")).toLongLong() / won) : 0;
     out[QStringLiteral("streak")] = e.value(QStringLiteral("streak")).toInt();

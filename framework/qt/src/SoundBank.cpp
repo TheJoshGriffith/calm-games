@@ -7,7 +7,38 @@
 namespace {
 const QString kBase = QStringLiteral("qrc:/qt/qml/Calm/sounds/");
 constexpr qint64 kCooldownMs = 45;
+
+struct ThemeInfo {
+    const char* id;
+    const char* name;
+};
+
+// Display order; the first is the default. Ids are folder names under sounds/.
+constexpr ThemeInfo kThemes[] = {
+    { "water", QT_TRANSLATE_NOOP("SoundBank", "Water") },
+    { "chimes", QT_TRANSLATE_NOOP("SoundBank", "Wind chimes") },
+    { "felt", QT_TRANSLATE_NOOP("SoundBank", "Felt") },
+    { "kalimba", QT_TRANSLATE_NOOP("SoundBank", "Kalimba") },
+    { "driftwood", QT_TRANSLATE_NOOP("SoundBank", "Driftwood") },
+};
 } // namespace
+
+QStringList SoundBank::themeIds()
+{
+    QStringList ids;
+    for (const ThemeInfo& theme : kThemes)
+        ids << QString::fromLatin1(theme.id);
+    return ids;
+}
+
+QVariantList SoundBank::themes() const
+{
+    QVariantList list;
+    for (const ThemeInfo& theme : kThemes)
+        list << QVariantMap { { QStringLiteral("id"), QString::fromLatin1(theme.id) },
+                              { QStringLiteral("name"), tr(theme.name) } };
+    return list;
+}
 
 SoundBank::SoundBank(QObject* parent)
     : QObject(parent)
@@ -23,18 +54,35 @@ SoundBank::SoundBank(QObject* parent)
     for (int i = 0; i < 8; ++i)
         notes << QStringLiteral("complete_%1").arg(i);
     add(QStringLiteral("complete"), notes, 0.9);
+    loadTheme();
 }
 
 void SoundBank::add(const QString& event, const QStringList& files, qreal gain)
 {
     Event e;
     e.gain = gain;
-    for (const QString& file : files) {
-        auto* effect = new QSoundEffect(this);
-        effect->setSource(QUrl(kBase + file + QStringLiteral(".wav")));
-        e.variants.push_back(effect);
-    }
+    e.files = files;
+    for (qsizetype i = 0; i < files.size(); ++i)
+        e.variants.push_back(new QSoundEffect(this));
     m_events.insert(event, e);
+}
+
+void SoundBank::loadTheme()
+{
+    const QString base = kBase + m_theme + QLatin1Char('/');
+    for (Event& e : m_events) {
+        for (qsizetype i = 0; i < e.files.size(); ++i)
+            e.variants[i]->setSource(QUrl(base + e.files[i] + QStringLiteral(".wav")));
+    }
+}
+
+void SoundBank::setTheme(const QString& theme)
+{
+    if (theme == m_theme || !themeIds().contains(theme))
+        return;
+    m_theme = theme;
+    loadTheme();
+    emit themeChanged();
 }
 
 void SoundBank::setEnabled(bool enabled)
@@ -76,6 +124,27 @@ void SoundBank::play(const QString& event, int step)
     }
 
     const qreal jitter = 0.9 + 0.2 * QRandomGenerator::global()->generateDouble();
-    effect->setVolume(qBound(0.0, m_volume * it->gain * jitter, 1.0));
-    effect->play();
+    playEffect(effect, it->gain * jitter);
+}
+
+void SoundBank::preview()
+{
+    if (!m_enabled || m_volume <= 0.0)
+        return;
+    const Event& e = m_events[QStringLiteral("complete")];
+    playEffect(e.variants.at(2), e.gain);
+}
+
+void SoundBank::playEffect(QSoundEffect* effect, qreal gain)
+{
+    effect->setVolume(qBound(0.0, m_volume * gain, 1.0));
+    if (effect->status() == QSoundEffect::Ready || effect->status() == QSoundEffect::Error) {
+        effect->play();
+        return;
+    }
+    // Still loading (a theme was just picked): play once it's ready.
+    connect(effect, &QSoundEffect::statusChanged, effect, [effect] {
+        if (effect->status() == QSoundEffect::Ready)
+            effect->play();
+    }, Qt::SingleShotConnection);
 }

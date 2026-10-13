@@ -70,7 +70,7 @@ int main(int argc, char* argv[])
         qInfo("share link: %s (not supported yet)", qPrintable(args.at(share + 1)));
 
     // Development aid: --screenshot <file.png> saves the window after start-up
-    // (combine with --play <Level> or --settings to open that screen).
+    // (combine with --play <Level>, --settings or --stats to open that screen).
     const int shot = args.indexOf(QStringLiteral("--screenshot"));
     if (shot >= 0 && shot + 1 < args.size()) {
         const QString path = args.at(shot + 1);

@@ -23,9 +23,18 @@ CalmPage {
         onClicked: page.settingsRequested()
     }
 
+    // A tap on the page outside the grid and the controls clears the selection.
+    // It sits under the page's own background, which takes no input.
+    MouseArea {
+        parent: page
+        anchors.fill: parent
+        z: -1
+        onClicked: page.game.clearSelection()
+    }
+
     Column {
         width: parent.width
-        spacing: 20
+        spacing: 16
         opacity: page.game.loading ? 0.3 : 1
         Behavior on opacity { NumberAnimation { duration: Theme.gentle } }
 
@@ -34,40 +43,69 @@ CalmPage {
             game: page.game
         }
 
-        Row {
+        Item {
             width: parent.width
-            ActionButton {
-                width: parent.width / 4
-                iconPath: Icons.undo
-                text: qsTr("Undo")
-                enabled: page.game.canUndo
-                onClicked: page.game.undo()
-            }
-            ActionButton {
-                width: parent.width / 4
-                iconPath: Icons.erase
-                text: qsTr("Erase")
-                onClicked: page.game.erase()
-            }
-            ActionButton {
-                width: parent.width / 4
-                iconPath: Icons.pencil
-                text: page.game.notesMode ? qsTr("Notes on") : qsTr("Notes")
-                checkable: true
-                checked: page.game.notesMode
-                onToggled: page.game.notesMode = checked
-            }
-            ActionButton {
-                width: parent.width / 4
-                iconPath: Icons.hint
-                text: qsTr("Hint")
-                onClicked: page.game.hint()
-            }
-        }
+            height: controls.height
 
-        NumberPad {
-            width: parent.width
-            game: page.game
+            // Gaps between controls belong to the controls: a near miss on
+            // the pad shouldn't clear the selection.
+            MouseArea {
+                anchors.fill: parent
+            }
+
+            Column {
+                id: controls
+                width: parent.width
+                spacing: 12
+
+                Row {
+                    width: parent.width
+                    ActionButton {
+                        width: parent.width / 4
+                        iconPath: Icons.undo
+                        text: qsTr("Undo")
+                        enabled: page.game.canUndo
+                        onClicked: page.game.undo()
+                    }
+                    ActionButton {
+                        width: parent.width / 4
+                        iconPath: Icons.erase
+                        text: qsTr("Erase")
+                        onClicked: page.game.erase()
+                    }
+                    ActionButton {
+                        width: parent.width / 4
+                        // Three cells and a tick: several cells at once.
+                        iconPath: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 17.5l2.2 2.2L20.5 14.5"
+                        text: qsTr("Multi-select")
+                        checkable: true
+                        checked: page.game.multiSelect
+                        onToggled: page.game.multiSelect = checked
+                    }
+                    ActionButton {
+                        width: parent.width / 4
+                        iconPath: Icons.hint
+                        text: qsTr("Hint")
+                        onClicked: page.game.hint()
+                    }
+                }
+
+                SegmentedControl {
+                    width: parent.width
+                    height: 44
+                    model: [qsTr("Number"), qsTr("Corner"), qsTr("Centre"), qsTr("Colour")]
+                    currentIndex: page.game.inputMode
+                    Accessible.name: qsTr("Input mode")
+                    onActivated: (index) => page.game.inputMode = index
+                }
+
+                // Width and side are set in Settings so the pad suits either hand.
+                NumberPad {
+                    width: parent.width * page.game.padWidth
+                    x: (parent.width - width) * (1 + page.game.padOffset) / 2
+                    game: page.game
+                }
+            }
         }
     }
 
@@ -105,6 +143,15 @@ CalmPage {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 text: qsTr("%1 in %2").arg(page.game.level).arg(page.formatTime(page.game.elapsedSeconds))
+                color: Theme.muted
+            }
+            CalmText {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: page.game.hintsUsed === 0 ? qsTr("No hints")
+                      : page.game.hintsUsed === 1 ? qsTr("1 hint used")
+                      : qsTr("%1 hints used").arg(page.game.hintsUsed)
+                font.pixelSize: 14
                 color: Theme.muted
             }
             Item { width: 1; height: 12 }
