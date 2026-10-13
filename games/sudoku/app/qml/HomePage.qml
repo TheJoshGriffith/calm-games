@@ -8,6 +8,7 @@ Item {
     required property SudokuGame game
     signal playRequested()
     signal settingsRequested()
+    signal statsRequested()
 
     readonly property var levels: [
         { name: "Easy", hint: qsTr("Singles only"), dots: 1 },
@@ -108,12 +109,21 @@ Item {
         }
     }
 
-    IconButton {
+    Row {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.margins: 24
-        iconPath: Icons.settings
-        text: qsTr("Settings")
-        onClicked: page.settingsRequested()
+        spacing: 8
+
+        IconButton {
+            iconPath: Icons.stats
+            text: qsTr("Statistics")
+            onClicked: page.statsRequested()
+        }
+        IconButton {
+            iconPath: Icons.settings
+            text: qsTr("Settings")
+            onClicked: page.settingsRequested()
+        }
     }
 }

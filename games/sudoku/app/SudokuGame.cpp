@@ -5,7 +5,10 @@
 
 #include <QRandomGenerator>
 #include <QSet>
+
+#if CALM_SUDOKU_THREADED_GENERATION
 #include <QtConcurrent/QtConcurrentRun>
+#endif
 
 #include <algorithm>
 
@@ -42,6 +45,8 @@ bool masksFromList(const QVariantList& list, std::array<sudoku::Mask, 81>& masks
 }
 
 const QString kMistakeMode = QStringLiteral("sudoku/mistakeMode");
+const QString kPadWidth = QStringLiteral("sudoku/padWidth");
+const QString kPadOffset = QStringLiteral("sudoku/padOffset");
 // The boolean option this replaced: true meant "compare with the answer".
 const QString kLegacyShowMistakes = QStringLiteral("sudoku/showMistakes");
 
@@ -54,6 +59,11 @@ constexpr int kSnapshotSize = 81 + 162 + 162 + 81 + 1;
 SudokuGame::SudokuGame(QObject* parent)
     : GameSession(parent)
 {
+#if !CALM_SUDOKU_THREADED_GENERATION
+    m_generationTimer = new QTimer(this);
+    m_generationTimer->setSingleShot(true);
+    connect(m_generationTimer, &QTimer::timeout, this, &SudokuGame::generateNext);
+#endif
     // Warm the buffers so the first game of any level starts instantly.
     for (int d = 0; d < sudoku::DifficultyCount; ++d)
         requestPuzzle(static_cast<Difficulty>(d));
@@ -61,10 +71,12 @@ SudokuGame::SudokuGame(QObject* parent)
 
 SudokuGame::~SudokuGame()
 {
+#if CALM_SUDOKU_THREADED_GENERATION
     for (auto* watcher : std::as_const(m_watchers)) {
         watcher->disconnect(this);
         watcher->waitForFinished();
     }
+#endif
 }
 
 QVariantList SudokuGame::cells() const
@@ -105,6 +117,8 @@ void SudokuGame::setSelected(int cell)
     if (next == m_selection)
         return;
     m_selection = next;
+    if (!m_selection.isEmpty())
+        setFocusDigit(0);
     emit selectedChanged();
 }
 
@@ -123,6 +137,7 @@ void SudokuGame::addToSelection(int cell)
         return;
     m_selection.removeAll(cell);
     m_selection.append(cell);
+    setFocusDigit(0);
     emit selectedChanged();
 }
 
@@ -146,6 +161,14 @@ void SudokuGame::setInputMode(int mode)
         return;
     m_inputMode = mode;
     emit inputModeChanged();
+}
+
+void SudokuGame::setFocusDigit(int digit)
+{
+    if (digit < 0 || digit > 9 || digit == m_focusDigit)
+        return;
+    m_focusDigit = digit;
+    emit focusDigitChanged();
 }
 
 QString SudokuGame::technique() const
@@ -176,9 +199,44 @@ void SudokuGame::setMistakeMode(int mode)
     }
 }
 
+qreal SudokuGame::padWidth() const
+{
+    return std::clamp(m_settings.value(kPadWidth, 1.0).toReal(), MinPadWidth, 1.0);
+}
+
+void SudokuGame::setPadWidth(qreal width)
+{
+    width = std::clamp(width, MinPadWidth, 1.0);
+    if (qFuzzyCompare(width, padWidth()))
+        return;
+    m_settings.setValue(kPadWidth, width);
+    emit optionsChanged();
+}
+
+qreal SudokuGame::padOffset() const
+{
+    return std::clamp(m_settings.value(kPadOffset, 0.0).toReal(), -1.0, 1.0);
+}
+
+void SudokuGame::setPadOffset(qreal offset)
+{
+    offset = std::clamp(offset, -1.0, 1.0);
+    if (qFuzzyCompare(offset + 2.0, padOffset() + 2.0))
+        return;
+    m_settings.setValue(kPadOffset, offset);
+    emit optionsChanged();
+}
+
 void SudokuGame::enter(int digit)
 {
-    if (!canPlay() || digit < 1 || digit > 9 || m_selection.isEmpty())
+    if (!active() || digit < 1 || digit > 9)
+        return;
+    if (m_selection.isEmpty()) {
+        if (m_inputMode != ColourMode)
+            setFocusDigit(digit == m_focusDigit ? 0 : digit);
+        return;
+    }
+    if (!canPlay())
         return;
 
     switch (m_inputMode) {
@@ -325,6 +383,7 @@ bool SudokuGame::hint()
     setSelected(target);
     beginMove();
     place(target, m_board.solution[target]);
+    noteHintUsed();
     afterPlacement({ target });
     endMove();
     return true;
@@ -430,6 +489,9 @@ void SudokuGame::createGame(const QString& level)
     m_waitingFor = difficulty;
     if (m_inFlight.value(int(difficulty)) == 0)
         requestPuzzle(difficulty);
+#if !CALM_SUDOKU_THREADED_GENERATION
+    scheduleGeneration();
+#endif
 }
 
 void SudokuGame::requestPuzzle(Difficulty difficulty)
@@ -440,6 +502,7 @@ void SudokuGame::requestPuzzle(Difficulty difficulty)
     ++m_inFlight[key];
 
     const quint64 seed = QRandomGenerator::global()->generate64();
+#if CALM_SUDOKU_THREADED_GENERATION
     auto* watcher = new QFutureWatcher<std::optional<sudoku::Puzzle>>(this);
     m_watchers.append(watcher);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, difficulty] {
@@ -449,7 +512,45 @@ void SudokuGame::requestPuzzle(Difficulty difficulty)
         onPuzzleReady(difficulty, puzzle);
     });
     watcher->setFuture(QtConcurrent::run([difficulty, seed] { return sudoku::generate(difficulty, seed); }));
+#else
+    m_pending.append({ difficulty, seed });
+    scheduleGeneration();
+#endif
 }
+
+#if !CALM_SUDOKU_THREADED_GENERATION
+void SudokuGame::scheduleGeneration()
+{
+    if (m_pending.isEmpty())
+        return;
+    // Each puzzle takes a few milliseconds up to about half a second, and
+    // blocks the only thread while it runs. Leave time for frames between
+    // them, and let the first screen appear before warming the buffers. A
+    // level the player is waiting for goes next without delay.
+    const int delay = m_waitingFor ? 0 : m_warmedUp ? 50 : 600;
+    if (!m_generationTimer->isActive() || m_generationTimer->remainingTime() > delay)
+        m_generationTimer->start(delay);
+}
+
+void SudokuGame::generateNext()
+{
+    m_warmedUp = true;
+    if (m_pending.isEmpty())
+        return;
+    qsizetype next = 0;
+    if (m_waitingFor) {
+        for (qsizetype i = 0; i < m_pending.size(); ++i) {
+            if (m_pending.at(i).first == *m_waitingFor) {
+                next = i;
+                break;
+            }
+        }
+    }
+    const auto [difficulty, seed] = m_pending.takeAt(next);
+    onPuzzleReady(difficulty, sudoku::generate(difficulty, seed));
+    scheduleGeneration();
+}
+#endif
 
 void SudokuGame::onPuzzleReady(Difficulty difficulty, const std::optional<sudoku::Puzzle>& puzzle)
 {
@@ -470,6 +571,7 @@ void SudokuGame::resetInput()
 {
     setInputMode(NumberMode);
     setMultiSelect(false);
+    setFocusDigit(0);
 }
 
 void SudokuGame::startWith(const sudoku::Puzzle& puzzle)

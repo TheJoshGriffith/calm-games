@@ -31,6 +31,8 @@ class GameSession : public QObject {
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY historyChanged)
     Q_PROPERTY(bool canRedo READ canRedo NOTIFY historyChanged)
     Q_PROPERTY(bool hasSavedGame READ hasSavedGame NOTIFY hasSavedGameChanged)
+    // Hints applied in the current game; 0 for a fresh game, kept on resume.
+    Q_PROPERTY(int hintsUsed READ hintsUsed NOTIFY hintsUsedChanged)
 
 public:
     explicit GameSession(QObject* parent = nullptr);
@@ -47,6 +49,7 @@ public:
     bool canUndo() const { return m_history.canUndo(); }
     bool canRedo() const { return m_history.canRedo(); }
     bool hasSavedGame() const;
+    int hintsUsed() const { return m_hintsUsed; }
 
     // Starts generating a new game; `active` turns true once it is ready.
     Q_INVOKABLE void startNewGame(const QString& level);
@@ -66,6 +69,7 @@ signals:
     void completeChanged();
     void historyChanged();
     void hasSavedGameChanged();
+    void hintsUsedChanged();
     // Any visible game state changed (board, selection, cards...).
     void stateChanged();
     // Shared sound/haptic vocabulary: "tap", "soft", "erase", "error",
@@ -87,6 +91,9 @@ protected:
     void beginMove();
     void endMove();
     void finishGame();
+    // Call when a hint is applied (inside the move, before any finishGame()),
+    // so stats can tell wins with and without hints apart.
+    void noteHintUsed();
     void emitFeedback(const QString& event, int step = 0) { emit feedback(event, step); }
 
 private:
@@ -94,12 +101,14 @@ private:
     void setActive(bool active);
     void setLoading(bool loading);
     void setComplete(bool complete);
+    void setHintsUsed(int hints);
     void updateTimer();
     void autosave();
     void tick();
 
     QString m_level;
     int m_elapsed = 0;
+    int m_hintsUsed = 0;
     bool m_paused = false;
     bool m_loading = false;
     bool m_active = false;

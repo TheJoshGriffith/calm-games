@@ -4,12 +4,23 @@
 
 #include <sudoku/Generator.h>
 
-#include <QFutureWatcher>
 #include <QHash>
 #include <QList>
 #include <QQmlEngine>
 #include <QSettings>
+#include <QTimer>
 #include <QVariantList>
+#include <QtGlobal>
+
+// Puzzles are generated on a worker thread where Qt has threads. A single-
+// threaded build (WebAssembly) generates them one at a time on the event
+// loop instead, between frames.
+#if QT_CONFIG(thread)
+#define CALM_SUDOKU_THREADED_GENERATION 1
+#include <QFutureWatcher>
+#else
+#define CALM_SUDOKU_THREADED_GENERATION 0
+#endif
 
 #include <array>
 
@@ -33,11 +44,19 @@ class SudokuGame : public GameSession {
     // When on, tapping a cell adds it to (or removes it from) the selection.
     Q_PROPERTY(bool multiSelect READ multiSelect WRITE setMultiSelect NOTIFY multiSelectChanged)
     Q_PROPERTY(int inputMode READ inputMode WRITE setInputMode NOTIFY inputModeChanged)
+    // With nothing selected, pressing a digit focuses it (0 = none): the board
+    // highlights that digit and shades every cell it can no longer go in.
+    // Selecting a cell, or pressing the same digit again, clears it.
+    Q_PROPERTY(int focusDigit READ focusDigit WRITE setFocusDigit NOTIFY focusDigitChanged)
     Q_PROPERTY(QString technique READ technique NOTIFY stateChanged)
 
     Q_PROPERTY(bool highlightPeers READ highlightPeers WRITE setHighlightPeers NOTIFY optionsChanged)
     Q_PROPERTY(bool highlightMatching READ highlightMatching WRITE setHighlightMatching NOTIFY optionsChanged)
     Q_PROPERTY(int mistakeMode READ mistakeMode WRITE setMistakeMode NOTIFY optionsChanged)
+    // Number pad layout: width as a fraction of the screen (0.5-1), and its
+    // position in the space left over (-1 = far left, 0 = centred, 1 = far right).
+    Q_PROPERTY(qreal padWidth READ padWidth WRITE setPadWidth NOTIFY optionsChanged)
+    Q_PROPERTY(qreal padOffset READ padOffset WRITE setPadOffset NOTIFY optionsChanged)
     Q_PROPERTY(bool showTimer READ showTimer WRITE setShowTimer NOTIFY optionsChanged)
     Q_PROPERTY(bool autoRemoveNotes READ autoRemoveNotes WRITE setAutoRemoveNotes NOTIFY optionsChanged)
 
@@ -63,6 +82,8 @@ public:
     void setMultiSelect(bool on);
     int inputMode() const { return m_inputMode; }
     void setInputMode(int mode);
+    int focusDigit() const { return m_focusDigit; }
+    void setFocusDigit(int digit);
     QString technique() const;
 
     bool highlightPeers() const { return option(QStringLiteral("highlightPeers"), true); }
@@ -70,6 +91,11 @@ public:
     bool highlightMatching() const { return option(QStringLiteral("highlightMatching"), true); }
     void setHighlightMatching(bool on) { setOption(QStringLiteral("highlightMatching"), on); }
     int mistakeMode() const;
+    qreal padWidth() const;
+    void setPadWidth(qreal width);
+    qreal padOffset() const;
+    void setPadOffset(qreal offset);
+    static constexpr qreal MinPadWidth = 0.5;
     void setMistakeMode(int mode);
     bool showTimer() const { return option(QStringLiteral("showTimer"), true); }
     void setShowTimer(bool on) { setOption(QStringLiteral("showTimer"), on); }
@@ -85,6 +111,7 @@ public:
 
     // Applies `digit` to the selection according to the input mode: places it
     // (Number), toggles a corner or centre mark, or paints colour `digit`.
+    // With nothing selected (outside Colour mode) it toggles focusDigit.
     Q_INVOKABLE void enter(int digit);
     // Colour 1-9 paints the selection (or clears it if every selected cell
     // already has that colour); 0 clears colours.
@@ -102,6 +129,7 @@ signals:
     void selectedChanged();
     void multiSelectChanged();
     void inputModeChanged();
+    void focusDigitChanged();
     void optionsChanged();
 
 protected:
@@ -145,9 +173,18 @@ private:
     QList<int> m_selection;
     bool m_multiSelect = false;
     int m_inputMode = NumberMode;
+    int m_focusDigit = 0;
     std::optional<sudoku::Difficulty> m_waitingFor;
     QHash<int, QList<sudoku::Puzzle>> m_buffer;
     QHash<int, int> m_inFlight;
+#if CALM_SUDOKU_THREADED_GENERATION
     QList<QFutureWatcher<std::optional<sudoku::Puzzle>>*> m_watchers;
+#else
+    void generateNext();
+    void scheduleGeneration();
+    QList<std::pair<sudoku::Difficulty, quint64>> m_pending;
+    QTimer* m_generationTimer = nullptr;
+    bool m_warmedUp = false;
+#endif
     mutable QSettings m_settings;
 };

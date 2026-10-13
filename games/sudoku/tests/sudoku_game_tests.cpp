@@ -2,6 +2,7 @@
 
 #include "SaveStore.h"
 #include "SudokuGame.h"
+#include "SaveStore.h"
 #include "Stats.h"
 
 #include <sudoku/Board.h>
@@ -162,6 +163,51 @@ private slots:
         game.clearSelection();
         QCOMPARE(game.selected(), -1);
         QVERIFY(game.selection().isEmpty());
+    }
+
+    void digitFocusWithNothingSelected()
+    {
+        SudokuGame game;
+        startAndWait(game, QStringLiteral("Easy"));
+        QSignalSpy moves(&game, &SudokuGame::stateChanged);
+
+        // Nothing selected: a digit focuses instead of placing, and pressing
+        // it again (or another digit) toggles or moves the focus.
+        game.enter(4);
+        QCOMPARE(game.focusDigit(), 4);
+        QCOMPARE(moves.count(), 0);
+        QVERIFY(!game.canUndo());
+        game.enter(7);
+        QCOMPARE(game.focusDigit(), 7);
+        game.enter(7);
+        QCOMPARE(game.focusDigit(), 0);
+
+        // Mark modes focus too; Colour mode doesn't.
+        game.setInputMode(SudokuGame::CornerMode);
+        game.enter(2);
+        QCOMPARE(game.focusDigit(), 2);
+        game.setInputMode(SudokuGame::ColourMode);
+        game.enter(5);
+        QCOMPARE(game.focusDigit(), 2);
+        game.setInputMode(SudokuGame::NumberMode);
+
+        // Selecting a cell clears the focus; the digit then places as usual.
+        const int cell = emptyCells(game).first();
+        game.selectOnly(cell);
+        QCOMPARE(game.focusDigit(), 0);
+        game.enter(3);
+        QCOMPARE(game.cells()[cell].toMap()[QStringLiteral("digit")].toInt(), 3);
+
+        game.clearSelection();
+        game.enter(6);
+        game.addToSelection(cell);
+        QCOMPARE(game.focusDigit(), 0);
+
+        // A new game starts unfocused.
+        game.clearSelection();
+        game.enter(6);
+        startAndWait(game, QStringLiteral("Easy"));
+        QCOMPARE(game.focusDigit(), 0);
     }
 
     void multiCellEntryIsOneStep()
@@ -510,6 +556,98 @@ private slots:
         QCOMPARE(stats.value(QStringLiteral("played")).toInt(), 1);
         QCOMPARE(stats.value(QStringLiteral("won")).toInt(), 1);
         QCOMPARE(stats.value(QStringLiteral("streak")).toInt(), 1);
+        QVERIFY(game.hintsUsed() > 0);
+        QCOMPARE(stats.value(QStringLiteral("wonNoHints")).toInt(), 0);
+        QCOMPARE(stats.value(QStringLiteral("winRate")).toDouble(), 1.0);
+    }
+
+    void hintsUsedResetsAndPersists()
+    {
+        {
+            SudokuGame game;
+            startAndWait(game, QStringLiteral("Easy"));
+            QCOMPARE(game.hintsUsed(), 0);
+            QSignalSpy changed(&game, &GameSession::hintsUsedChanged);
+            game.setSelected(-1);
+            QVERIFY(game.hint());
+            QVERIFY(game.hint());
+            QCOMPARE(game.hintsUsed(), 2);
+            QCOMPARE(changed.count(), 2);
+
+            // An ordinary move is not a hint.
+            const int cell = firstEmpty(game);
+            game.setSelected(cell);
+            game.enter(5);
+            QCOMPARE(game.hintsUsed(), 2);
+        }
+        {
+            SudokuGame restored;
+            QCOMPARE(restored.hintsUsed(), 0);
+            QVERIFY(restored.resume());
+            QCOMPARE(restored.hintsUsed(), 2);
+
+            startAndWait(restored, QStringLiteral("Easy"));
+            QCOMPARE(restored.hintsUsed(), 0);
+        }
+    }
+
+    void hintFreeWinsAndWinRate()
+    {
+        const QString id = QStringLiteral("stats-test");
+        const QString level = QStringLiteral("Easy");
+
+        QVariantMap s = Stats::forLevel(id, level);
+        QCOMPARE(s.value(QStringLiteral("played")).toInt(), 0);
+        QCOMPARE(s.value(QStringLiteral("wonNoHints")).toInt(), 0);
+        QCOMPARE(s.value(QStringLiteral("winRate")).toDouble(), 0.0);
+
+        // Four games: two clean wins, one win with hints, one abandoned.
+        Stats::recordStarted(id, level);
+        Stats::recordWon(id, level, 100, false);
+        Stats::recordStarted(id, level);
+        Stats::recordWon(id, level, 200, true);
+        Stats::recordStarted(id, level);
+        Stats::recordWon(id, level, 300);
+        Stats::recordStarted(id, level);
+
+        s = Stats::forLevel(id, level);
+        QCOMPARE(s.value(QStringLiteral("played")).toInt(), 4);
+        QCOMPARE(s.value(QStringLiteral("won")).toInt(), 3);
+        QCOMPARE(s.value(QStringLiteral("wonNoHints")).toInt(), 2);
+        QCOMPARE(s.value(QStringLiteral("winRate")).toDouble(), 0.75);
+        QCOMPARE(s.value(QStringLiteral("averageSeconds")).toInt(), 200);
+
+        // Other levels are untouched.
+        QCOMPARE(Stats::forLevel(id, QStringLiteral("Hard")).value(QStringLiteral("winRate")).toDouble(), 0.0);
+
+        Stats::reset(id);
+        QCOMPARE(Stats::forLevel(id, level).value(QStringLiteral("played")).toInt(), 0);
+    }
+
+    void statsFromBeforeHintTrackingStillLoad()
+    {
+        // The pre-hint format: no wonNoHints key at all.
+        QVariantMap old;
+        old.insert(QStringLiteral("played"), 5);
+        old.insert(QStringLiteral("won"), 4);
+        old.insert(QStringLiteral("totalSeconds"), 400);
+        old.insert(QStringLiteral("bestSeconds"), 60);
+        QVariantMap all;
+        all.insert(QStringLiteral("Medium"), old);
+        QVERIFY(SaveStore::save(QStringLiteral("stats-sudoku"), all));
+
+        QVariantMap s = Stats::forLevel(QStringLiteral("sudoku"), QStringLiteral("Medium"));
+        QCOMPARE(s.value(QStringLiteral("won")).toInt(), 4);
+        QCOMPARE(s.value(QStringLiteral("wonNoHints")).toInt(), 0);
+        QCOMPARE(s.value(QStringLiteral("winRate")).toDouble(), 0.8);
+        QCOMPARE(s.value(QStringLiteral("averageSeconds")).toInt(), 100);
+
+        Stats::recordStarted(QStringLiteral("sudoku"), QStringLiteral("Medium"));
+        Stats::recordWon(QStringLiteral("sudoku"), QStringLiteral("Medium"), 50, false);
+        s = Stats::forLevel(QStringLiteral("sudoku"), QStringLiteral("Medium"));
+        QCOMPARE(s.value(QStringLiteral("won")).toInt(), 5);
+        QCOMPARE(s.value(QStringLiteral("wonNoHints")).toInt(), 1);
+        QCOMPARE(s.value(QStringLiteral("bestSeconds")).toInt(), 50);
     }
 
     void resumeRestoresBoard()
@@ -605,6 +743,28 @@ private slots:
             SudokuGame game;
             QCOMPARE(game.mistakeMode(), int(SudokuGame::MistakesClashes));
         }
+    }
+
+    void padLayoutIsClampedAndPersisted()
+    {
+        {
+            SudokuGame game;
+            QCOMPARE(game.padWidth(), 1.0);
+            QCOMPARE(game.padOffset(), 0.0);
+            QSignalSpy options(&game, &SudokuGame::optionsChanged);
+            game.setPadWidth(0.2); // below the minimum
+            game.setPadOffset(3.0); // past the right edge
+            QCOMPARE(game.padWidth(), SudokuGame::MinPadWidth);
+            QCOMPARE(game.padOffset(), 1.0);
+            QCOMPARE(options.count(), 2);
+            game.setPadOffset(1.0); // unchanged: no signal
+            QCOMPARE(options.count(), 2);
+            game.setPadWidth(0.75);
+            game.setPadOffset(-0.4);
+        }
+        SudokuGame game;
+        QCOMPARE(game.padWidth(), 0.75);
+        QCOMPARE(game.padOffset(), -0.4);
     }
 };
 

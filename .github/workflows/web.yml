@@ -1,0 +1,203 @@
+name: Web
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to a pull request supersedes its running build.
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  games:
+    # Every game with an app (games/<name>/app/CMakeLists.txt with a
+    # qt_add_executable target) gets its own web build, smoke test and
+    # Cloudflare Pages project gwynant-<name>, served at <name>.gwynant.app.
+    name: Find web games
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.find.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, pathlib, re
+          games = []
+          for cmake in sorted(pathlib.Path("games").glob("*/app/CMakeLists.txt")):
+              match = re.search(r"qt_add_executable\((\w+)", cmake.read_text())
+              if match:
+                  name = cmake.parts[1]
+                  games.append({"name": name, "title": name.capitalize(), "target": match.group(1)})
+          print("matrix=" + json.dumps({"include": games}))
+          PY
+          cat "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.title }} (WebAssembly)
+    needs: games
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.games.outputs.matrix) }}
+    env:
+      # Deploys need the Cloudflare secrets, which fork pull requests don't
+      # get (they only build and test). A push to main deploys production; a
+      # pull request from this repository deploys a preview.
+      CAN_DEPLOY: ${{ (github.event_name == 'pull_request' || github.ref == 'refs/heads/main') && secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+      DEPLOY_BRANCH: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+      PAGES_PROJECT: gwynant-${{ matrix.name }}
+      # Qt 6.8 is built and tested against this Emscripten version.
+      EMSDK_VERSION: '3.1.56'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt for Linux (host tools)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Remember host Qt
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+
+      # Single-threaded Qt needs no COOP/COEP headers, so it runs anywhere.
+      - name: Install Qt for WebAssembly
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: all_os
+          target: wasm
+          arch: wasm_singlethread
+          modules: 'qtmultimedia'
+          cache: true
+
+      - name: Install Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build brotli
+          python3 -m pip install --quiet pillow
+
+      # ENV, FS and the run-dependency calls are exported for the page
+      # (tools/web/index.html): it passes environment variables such as the
+      # QML smoke test's CALM_SMOKE_TEST, and keeps the app's home directory
+      # in IndexedDB (IDBFS) so saves and settings survive a reload.
+      # Errors from this step and the next also show as annotations.
+      - name: Configure
+        run: |
+          emcc --version | head -n 1
+          # The all_os WebAssembly package loses its executable bits.
+          chmod +x "$QT_ROOT_DIR"/bin/*
+          set -o pipefail
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build-wasm -G Ninja \
+            -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DQT_WASM_EXTRA_EXPORTED_METHODS="ENV,FS,addRunDependency,removeRunDependency" \
+            -DCMAKE_EXE_LINKER_FLAGS="-lidbfs.js" \
+            -DCALM_GAMES=${{ matrix.name }} -DCALM_BUILD_APPS=ON -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF 2>&1 | tee configure.log \
+          || { grep -A4 "CMake Error" configure.log | head -n 30 | sed 's/^/::error::/'; exit 1; }
+
+      - name: Build
+        run: |
+          set -o pipefail
+          cmake --build build-wasm --target ${{ matrix.target }} --parallel 2>&1 | tee build.log \
+          || { grep -E "error:|Error |undefined symbol" build.log | head -n 30 | sed 's/^/::error::/'; exit 1; }
+
+      - name: Assemble site
+        run: |
+          python3 tools/web/make-site.py --build-dir build-wasm --game ${{ matrix.name }} --out site --build-id "${GITHUB_SHA::12}"
+          wasm=site/${{ matrix.target }}.wasm
+          raw=$(stat -c %s "$wasm")
+          gz=$(gzip -9 -c "$wasm" | wc -c)
+          br=$(brotli -c -q 11 "$wasm" | wc -c)
+          {
+            echo "### ${{ matrix.title }} web build size (bytes)"
+            echo "| File | Raw | gzip -9 | brotli -q 11 |"
+            echo "| --- | ---: | ---: | ---: |"
+            echo "| ${{ matrix.target }}.wasm | $raw | $gz | $br |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=${{ matrix.title }} download size::${{ matrix.target }}.wasm is $raw bytes raw, $gz gzip -9, $br brotli -q 11"
+          # Cloudflare Pages rejects any single file over 25 MiB.
+          if [ "$raw" -gt $((25 * 1024 * 1024)) ]; then
+            echo "::error::${{ matrix.target }}.wasm is $raw bytes, over Cloudflare Pages' 25 MiB file limit"
+            exit 1
+          fi
+          if [ "$raw" -gt $((23 * 1024 * 1024)) ]; then
+            echo "::warning::${{ matrix.target }}.wasm is $raw bytes, close to Cloudflare Pages' 25 MiB file limit"
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+
+      # QML smoke test and home-screen screenshots for every game, plus the
+      # game's own checks in games/<name>/app/web/smoke.mjs if it has them.
+      - name: Smoke test in headless Chromium
+        run: node tools/web/smoke.mjs site screens ${{ matrix.name }}
+
+      - name: Upload site
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}-web-site
+          path: site
+          if-no-files-found: ignore
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}-web-screenshots
+          path: screens
+          if-no-files-found: ignore
+
+      # Creates the Pages project on a game's first deploy; once it exists
+      # this reports "already exists", which is fine.
+      - name: Make sure the Pages project exists
+        if: env.CAN_DEPLOY == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if out=$(npx --yes wrangler@3 pages project create "$PAGES_PROJECT" --production-branch=main 2>&1); then
+            echo "$out"
+          elif grep -qi "already exists" <<<"$out"; then
+            echo "Pages project $PAGES_PROJECT already exists."
+          else
+            echo "$out"
+            echo "::warning::Could not create Pages project $PAGES_PROJECT; the deploy below will say why."
+          fi
+
+      # --branch main is production; any other branch is a preview at
+      # https://<branch>.gwynant-<name>.pages.dev.
+      - name: Deploy to Cloudflare Pages
+        id: deploy
+        if: env.CAN_DEPLOY == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site --project-name=${{ env.PAGES_PROJECT }} --branch=${{ env.DEPLOY_BRANCH }} --commit-hash=${{ github.event.pull_request.head.sha || github.sha }} --commit-dirty=true
+
+      - name: Deployment link
+        if: env.CAN_DEPLOY == 'true'
+        run: |
+          echo "### Deployed ${{ matrix.title }} (${DEPLOY_BRANCH})" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.deploy.outputs.deployment-url }}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=${{ matrix.title }} deployed::${{ steps.deploy.outputs.deployment-url }}"
