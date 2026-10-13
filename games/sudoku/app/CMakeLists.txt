@@ -25,8 +25,11 @@ target_link_libraries(CalmSudoku PRIVATE
     calm_framework
     calm_frameworkplugin
     Qt6::Quick
-    Qt6::Concurrent
 )
+# Single-threaded Qt (WebAssembly) generates puzzles on the event loop instead.
+if(NOT DEFINED QT_FEATURE_thread OR QT_FEATURE_thread)
+    target_link_libraries(CalmSudoku PRIVATE Qt6::Concurrent)
+endif()
 
 if(CALM_BUILD_TESTS)
     add_test(NAME sudoku_app_smoke COMMAND CalmSudoku)

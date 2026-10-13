@@ -1,0 +1,129 @@
+name: Web
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# One deploy at a time; a newer push to main supersedes a queued one.
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  sudoku:
+    name: Sudoku (WebAssembly)
+    runs-on: ubuntu-latest
+    env:
+      # Deploying happens only on main, once the Cloudflare secrets exist; pull
+      # requests (and main before then) build, smoke-test and upload the site.
+      CAN_DEPLOY: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+      # Qt 6.8 is built and tested against this Emscripten version.
+      EMSDK_VERSION: '3.1.56'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt for Linux (host tools)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Remember host Qt
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+
+      - name: Install Qt for WebAssembly
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: all_os
+          target: wasm
+          arch: wasm_singlethread
+          modules: 'qtmultimedia'
+          cache: true
+
+      - name: Install Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Configure
+        run: |
+          emcc --version | head -n 1
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build-wasm -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DCALM_BUILD_APPS=ON -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF
+
+      - name: Build
+        run: cmake --build build-wasm --target CalmSudoku --parallel
+
+      - name: Assemble site
+        run: |
+          games/sudoku/app/web/make-site.sh build-wasm site "${GITHUB_SHA::12}"
+          wasm=site/CalmSudoku.wasm
+          raw=$(stat -c %s "$wasm")
+          gz=$(gzip -9 -c "$wasm" | wc -c)
+          br=$( (brotli -c -q 11 "$wasm" 2>/dev/null || true) | wc -c)
+          {
+            echo "### Web build size"
+            echo "| File | Raw | gzip -9 | brotli -q 11 |"
+            echo "| --- | ---: | ---: | ---: |"
+            echo "| CalmSudoku.wasm | $((raw / 1024)) KiB | $((gz / 1024)) KiB | $((br / 1024)) KiB |"
+            for f in CalmSudoku.js qtloader.js; do
+              echo "| $f | $(( $(stat -c %s site/$f) / 1024 )) KiB | $(( $(gzip -9 -c site/$f | wc -c) / 1024 )) KiB | |"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+
+      - name: Smoke test in headless Chromium
+        run: node games/sudoku/app/web/smoke.mjs site screens
+
+      - name: Upload site
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sudoku-web-site
+          path: site
+          if-no-files-found: ignore
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sudoku-web-screenshots
+          path: screens
+          if-no-files-found: ignore
+
+      # wrangler can't create a Pages project as part of a non-interactive
+      # deploy, so create it first; this fails harmlessly once it exists.
+      - name: Make sure the Pages project exists
+        if: env.CAN_DEPLOY == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@3 pages project create gwynant-sudoku --production-branch=main || echo "Project already exists."
+
+      - name: Deploy to Cloudflare Pages
+        if: env.CAN_DEPLOY == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site --project-name=gwynant-sudoku --branch=main --commit-dirty=true

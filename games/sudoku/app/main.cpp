@@ -61,9 +61,16 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    // Share links (https://<domain>/s/<payload> on the web build) start the
+    // app with --share <payload>. Opening the shared board is not built yet;
+    // this is where it will hook in.
+    const QStringList args = QCoreApplication::arguments();
+    const int share = args.indexOf(QStringLiteral("--share"));
+    if (share >= 0 && share + 1 < args.size())
+        qInfo("share link: %s (not supported yet)", qPrintable(args.at(share + 1)));
+
     // Development aid: --screenshot <file.png> saves the window after start-up
     // (combine with --play <Level> or --settings to open that screen).
-    const QStringList args = QCoreApplication::arguments();
     const int shot = args.indexOf(QStringLiteral("--screenshot"));
     if (shot >= 0 && shot + 1 < args.size()) {
         const QString path = args.at(shot + 1);
