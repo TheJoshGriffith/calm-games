@@ -179,8 +179,9 @@
       window.calm = { state: 'loading', exit: null, storage: 'none', events: [] };
 
       // Saves, settings and statistics are files under the app's home
-      // directory. Keep that directory in IndexedDB (Emscripten's IDBFS):
-      // load it before main() runs, and write changes back as they happen.
+      // directory. Keep that directory in IndexedDB (Emscripten's IDBFS): load
+      // it before main() runs, then write it back whenever a file changes
+      // (checked every second) and when the page is hidden or closed.
       const home = '/home/web_user';
       function persistentHome(instance) {
         const FS = instance.FS;
@@ -191,35 +192,59 @@
         }
         try {
           FS.mkdirTree(home);
-          FS.mount(IDBFS, { autoPersist: true }, home);
+          FS.mount(IDBFS, {}, home);
         } catch (error) {
           console.warn('No persistent storage:', error);
           return;
         }
+
+        // Every file under home with its size and modification time.
+        const files = (dir = home, out = []) => {
+          for (const name of FS.readdir(dir)) {
+            if (name === '.' || name === '..') continue;
+            const path = dir + '/' + name;
+            const stat = FS.stat(path);
+            if (FS.isDir(stat.mode)) files(path, out);
+            else out.push(path + ' ' + stat.size + ' ' + new Date(stat.mtime).getTime());
+          }
+          return out;
+        };
+        let stored = null;      // the file list IndexedDB last caught up with
+        let syncing = false;
+        let waiting = [];       // callbacks for the next write-back
+        const persist = () => {
+          if (syncing) return;
+          const now = files().join('\n');
+          if (now === stored && !waiting.length) return;
+          syncing = true;
+          const callbacks = waiting;
+          waiting = [];
+          FS.syncfs(false, error => {
+            syncing = false;
+            if (error) console.warn('Could not save progress:', error);
+            else stored = now;
+            callbacks.forEach(callback => callback(error));
+            if (waiting.length) persist();
+          });
+        };
+
         instance.addRunDependency('calm-home');
         FS.syncfs(true, error => {
           if (error) console.warn('Could not load saved progress:', error);
           window.calm.storage = error ? 'failed' : 'indexeddb';
           window.calm.events.push('storage loaded');
+          stored = files().join('\n');
+          setInterval(persist, 1000);
           instance.removeRunDependency('calm-home');
         });
-        // Belt and braces for writes autoPersist hasn't flushed yet.
-        const flush = () => FS.syncfs(false, () => {});
-        document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
-        window.addEventListener('pagehide', flush);
-        window.calm.flush = () => new Promise(resolve => FS.syncfs(false, resolve));
-        // Lists the saved files, for checking persistence from devtools or tests.
-        window.calm.files = (dir = home) => {
-          const out = [];
-          for (const name of FS.readdir(dir)) {
-            if (name === '.' || name === '..') continue;
-            const path = dir + '/' + name;
-            const stat = FS.stat(path);
-            if (FS.isDir(stat.mode)) out.push(...window.calm.files(path));
-            else out.push(path + ' ' + stat.size);
-          }
-          return out;
-        };
+        document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
+        window.addEventListener('pagehide', persist);
+
+        // For devtools and tests: list the files, ask whether any change is
+        // not in IndexedDB yet, or write everything back now.
+        window.calm.files = () => files();
+        window.calm.unsaved = () => syncing || stored === null || files().join('\n') !== stored;
+        window.calm.flush = () => new Promise(resolve => { waiting.push(resolve); persist(); });
       }
 
       async function start() {
