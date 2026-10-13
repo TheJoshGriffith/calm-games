@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <!-- Share links (/s/<payload>) are served this same page, so every asset
-       path must resolve from the site root, not from /s/. -->
+  <!-- Deep links such as /s/<payload> may serve this same page (see a game's
+       app/web/site/_redirects), so every asset path resolves from the root. -->
   <base href="/">
-  <title>Gwynant Sudoku</title>
-  <meta name="description" content="Calm, free, ad-free Sudoku. Endless puzzles, Easy to Expert.">
+  <title>__TITLE__</title>
+  <meta name="description" content="__TITLE__: calm, free and ad-free, with no accounts or tracking.">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#F2F4F3" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#151D22" media="(prefers-color-scheme: dark)">
@@ -98,14 +98,14 @@
   <div id="screen"></div>
   <div id="splash" role="status" aria-live="polite">
     <img src="icon-192.png" alt="">
-    <h1>Gwynant Sudoku</h1>
+    <h1>__TITLE__</h1>
     <div class="bar" id="bar"><span id="progress"></span></div>
     <p id="status">Loading</p>
   </div>
-  <noscript>Gwynant Sudoku needs JavaScript and WebAssembly.</noscript>
+  <noscript>__TITLE__ needs JavaScript and WebAssembly.</noscript>
 
   <script src="qtloader.js?v=__BUILD__"></script>
-  <script src="CalmSudoku.js?v=__BUILD__"></script>
+  <script src="__TARGET__.js?v=__BUILD__"></script>
   <script>
     (function () {
       const splash = document.getElementById('splash');
@@ -154,14 +154,15 @@
         return WebAssembly.compile(bytes.subarray(0, received));
       }
 
-      // Hook for share links: https://<domain>/s/<payload> starts the app
-      // with "--share <payload>". The app does not act on it yet.
+      // Share links: https://<domain>/s/<payload> starts the app with
+      // "--share <payload>" (served only where the game's _redirects maps
+      // /s/* to this page).
       function appArguments() {
         const args = [];
         const match = window.location.pathname.match(/^\/s\/([^/?#]+)/);
         if (match)
           args.push('--share', decodeURIComponent(match[1]));
-        // Development aid, like the desktop flag: ?play=Hard opens a game.
+        // Development aid, like the desktop flag: ?play=<Level> opens a game.
         const play = new URLSearchParams(window.location.search).get('play');
         if (play)
           args.push('--play', play);
@@ -179,13 +180,13 @@
 
       async function start() {
         try {
-          const module = await fetchWasm('CalmSudoku.wasm?v=__BUILD__');
+          const module = await fetchWasm('__TARGET__.wasm?v=__BUILD__');
           await qtLoad({
             arguments: appArguments(),
             qt: {
               module: Promise.resolve(module),
               // Qt 6.8 names the Emscripten factory <target>_entry.
-              entryFunction: window.CalmSudoku_entry,
+              entryFunction: window.__TARGET___entry,
               containerElements: [screen],
               environment: environment,
               onLoaded: () => {
@@ -197,7 +198,7 @@
                 window.calm.state = 'exited';
                 window.calm.exit = exitData;
                 if (exitData.code !== 0 || exitData.crashed) {
-                  console.error('CalmSudoku exited', JSON.stringify(exitData));
+                  console.error('__TARGET__ exited', JSON.stringify(exitData));
                 }
               },
             },

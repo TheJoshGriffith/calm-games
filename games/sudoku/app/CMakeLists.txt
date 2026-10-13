@@ -34,12 +34,6 @@ if(NOT DEFINED QT_FEATURE_thread OR QT_FEATURE_thread)
     target_link_libraries(CalmSudoku PRIVATE Qt6::Concurrent)
 endif()
 
-if(EMSCRIPTEN)
-    # The web page (games/sudoku/app/web/, see docs/WEB.md) passes environment
-    # variables such as CALM_SMOKE_TEST to the app, which qtloader.js needs ENV for.
-    set_target_properties(CalmSudoku PROPERTIES QT_WASM_EXTRA_EXPORTED_METHODS "ENV")
-endif()
-
 if(CALM_BUILD_TESTS)
     add_test(NAME sudoku_app_smoke COMMAND CalmSudoku)
     set_tests_properties(sudoku_app_smoke PROPERTIES
