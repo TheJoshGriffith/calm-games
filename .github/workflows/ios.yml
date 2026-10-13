@@ -158,13 +158,18 @@ jobs:
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
-          # Qt logs to the unified log on iOS, so launch detached and read it back.
-          SIMCTL_CHILD_CALM_SMOKE_TEST=1 xcrun simctl launch "$UDID" com.thejoshgriffith.calm.sudoku
+          # The app appends its messages to CALM_SMOKE_LOG inside its own container.
+          DATA=$(xcrun simctl get_app_container "$UDID" com.thejoshgriffith.calm.sudoku data)
+          LOG="$DATA/tmp/smoke.log"
+          mkdir -p "$DATA/tmp"
+          SIMCTL_CHILD_CALM_SMOKE_TEST=1 SIMCTL_CHILD_CALM_SMOKE_LOG="$LOG" \
+            xcrun simctl launch "$UDID" com.thejoshgriffith.calm.sudoku
           sleep 30
-          xcrun simctl spawn "$UDID" log show --last 3m --info --debug --style compact \
-            --predicate 'process == "CalmSudoku"' > launch.log || true
-          tail -n 150 launch.log
-          grep -q "smoke test: ok" launch.log
+          echo "--- app log ---"
+          cat "$LOG" || echo "(no log written)"
+          echo "--- still running? ---"
+          xcrun simctl spawn "$UDID" launchctl list | grep -i calm || echo "(not running)"
+          grep -q "smoke test: ok" "$LOG"
 
       - name: Crash reports
         if: failure()

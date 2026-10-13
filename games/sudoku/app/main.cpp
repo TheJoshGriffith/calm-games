@@ -1,4 +1,5 @@
 #include <QDebug>
+#include <QFile>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlExtensionPlugin>
@@ -12,6 +13,9 @@ namespace {
 // CALM_SMOKE_TEST=1 loads the UI, runs briefly and fails on any QML warning.
 int g_qmlWarnings = 0;
 QtMessageHandler g_previousHandler = nullptr;
+// CALM_SMOKE_LOG=<file> also appends every message there (iOS simulator CI,
+// where the app's console isn't easy to capture).
+QFile* g_smokeLog = nullptr;
 
 void countingHandler(QtMsgType type, const QMessageLogContext& context, const QString& message)
 {
@@ -19,6 +23,10 @@ void countingHandler(QtMsgType type, const QMessageLogContext& context, const QS
         ++g_qmlWarnings;
     else if (type == QtWarningMsg && (message.contains(QLatin1String(".qml:")) || message.contains(QLatin1String("qrc:/"))))
         ++g_qmlWarnings;
+    if (g_smokeLog) {
+        g_smokeLog->write(qFormatLogMessage(type, context, message).toUtf8() + '\n');
+        g_smokeLog->flush();
+    }
     g_previousHandler(type, context, message);
 }
 
@@ -32,8 +40,16 @@ int main(int argc, char* argv[])
     QGuiApplication::setApplicationName(QStringLiteral("Sudoku"));
 
     const bool smokeTest = qEnvironmentVariableIsSet("CALM_SMOKE_TEST");
-    if (smokeTest)
+    if (smokeTest) {
+        if (qEnvironmentVariableIsSet("CALM_SMOKE_LOG")) {
+            g_smokeLog = new QFile(qEnvironmentVariable("CALM_SMOKE_LOG"));
+            if (!g_smokeLog->open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+                delete g_smokeLog;
+                g_smokeLog = nullptr;
+            }
+        }
         g_previousHandler = qInstallMessageHandler(countingHandler);
+    }
 
     QQmlApplicationEngine engine;
     engine.addImportPath(QStringLiteral("qrc:/qt/qml"));
