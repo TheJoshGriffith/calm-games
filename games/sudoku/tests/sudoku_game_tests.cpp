@@ -1006,6 +1006,151 @@ private slots:
         QVERIFY(givens(game) == shared);
     }
 
+    void variantGamesStart()
+    {
+        SudokuGame game;
+        QCOMPARE(game.variant(), QStringLiteral("classic"));
+        QCOMPARE(SudokuGame::variantIds().size(), sudoku::VariantCount - 1);
+        QCOMPARE(SudokuGame::variantLevel(QStringLiteral("killer")), QStringLiteral("Killer"));
+        QCOMPARE(SudokuGame::variantOfLevel(QStringLiteral("Hard")), QStringLiteral("classic"));
+        QCOMPARE(SudokuGame::variantOfLevel(QStringLiteral("Little Killer")), QStringLiteral("little-killer"));
+
+        QSignalSpy clues(&game, &SudokuGame::cluesChanged);
+        startAndWait(game, QStringLiteral("Killer"));
+        QCOMPARE(game.level(), QStringLiteral("Killer"));
+        QCOMPARE(game.variant(), QStringLiteral("killer"));
+        QVERIFY(clues.count() > 0);
+        QVERIFY(game.clues().value(QStringLiteral("cages")).toList().size() > 10);
+        QVERIFY(game.puzzleCode().startsWith(QStringLiteral("KL1-")));
+        QCOMPARE(game.technique(), QString());
+
+        // Every variant starts, with its clues on the board.
+        for (const QString& id : SudokuGame::variantIds()) {
+            startAndWait(game, SudokuGame::variantLevel(id));
+            QCOMPARE(game.variant(), id);
+        }
+        startAndWait(game, QStringLiteral("Easy"));
+        QCOMPARE(game.variant(), QStringLiteral("classic"));
+        QVERIFY(game.clues().value(QStringLiteral("cages")).toList().isEmpty());
+    }
+
+    void variantHintsFinishTheGame()
+    {
+        SudokuGame game;
+        startAndWait(game, QStringLiteral("Jigsaw"));
+        QVERIFY(game.clues().value(QStringLiteral("jigsaw")).toBool());
+        for (int i = 0; i < 81 && !game.complete(); ++i)
+            QVERIFY(game.hint());
+        QVERIFY(game.complete());
+        const auto stats = Stats::forLevel(QStringLiteral("sudoku"), QStringLiteral("Jigsaw"));
+        QCOMPARE(stats.value(QStringLiteral("won")).toInt(), 1);
+        QCOMPARE(Stats::forLevel(QStringLiteral("sudoku"), QStringLiteral("Easy")).value(QStringLiteral("played")).toInt(), 0);
+    }
+
+    void variantMistakesFollowItsRules()
+    {
+        SudokuGame game;
+        startAndWait(game, QStringLiteral("Anti-King"));
+        QCOMPARE(game.mistakeMode(), int(SudokuGame::MistakesClashes));
+        // An empty cell beside a digit only diagonally (another row, column
+        // and box): repeating that digit there is a clash in Anti-King only.
+        for (int e : emptyCells(game)) {
+            const int r = e / 9, c = e % 9;
+            for (int dr : { -1, 1 }) {
+                for (int dc : { -1, 1 }) {
+                    const int nr = r + dr, nc = c + dc;
+                    if (nr < 0 || nr > 8 || nc < 0 || nc > 8)
+                        continue;
+                    const int n = nr * 9 + nc;
+                    const int d = digit(game, n);
+                    if (d == 0 || sudoku::arePeers(e, n))
+                        continue;
+                    bool seen = false;
+                    for (int p : sudoku::peers()[e])
+                        seen = seen || digit(game, p) == d;
+                    if (seen)
+                        continue;
+                    game.selectOnly(e);
+                    game.enter(d);
+                    QVERIFY(mistake(game, e));
+                    QVERIFY(mistake(game, n));
+                    // Focus on that digit shades the cell as blocked, too.
+                    game.erase();
+                    QVERIFY(!mistake(game, e));
+                    QVERIFY(game.blockedFor(d).at(e).toBool());
+                    return;
+                }
+            }
+        }
+        QFAIL("no diagonal-only neighbour found");
+    }
+
+    void variantGamesResume()
+    {
+        QVariantList cells;
+        QVariantMap clues;
+        QString code;
+        {
+            SudokuGame game;
+            startAndWait(game, QStringLiteral("Thermo"));
+            playSome(game);
+            cells = game.cells();
+            clues = game.clues();
+            code = game.puzzleCode();
+        }
+        SudokuGame resumed;
+        QVERIFY(resumed.resume());
+        QCOMPARE(resumed.level(), QStringLiteral("Thermo"));
+        QCOMPARE(resumed.variant(), QStringLiteral("thermo"));
+        QCOMPARE(resumed.clues(), clues);
+        QCOMPARE(resumed.cells(), cells);
+        QCOMPARE(resumed.puzzleCode(), code);
+    }
+
+    void variantCodesAndLinks()
+    {
+        SudokuGame from;
+        startAndWait(from, QStringLiteral("Sandwich"));
+        playSome(from);
+        const QString code = from.puzzleCode();
+        QVERIFY(code.startsWith(QStringLiteral("SW1-")));
+
+        // The code rebuilds the same puzzle.
+        SudokuGame typed;
+        QVERIFY(typed.startFromCode(code.toLower()));
+        QTRY_VERIFY_WITH_TIMEOUT(typed.active() && !typed.loading(), 20000);
+        QCOMPARE(typed.level(), QStringLiteral("Sandwich"));
+        QCOMPARE(typed.clues(), from.clues());
+        QVERIFY(givens(typed) == givens(from));
+
+        // Links carry the code (and progress), not the clues.
+        const QString start = from.shareUrl(false);
+        const QString progress = from.shareUrl(true);
+        QCOMPARE(start, SudokuGame::ShareUrlBase + code);
+        QVERIFY(progress.startsWith(SudokuGame::ShareUrlBase + code + QStringLiteral(".1")));
+
+        SudokuGame to;
+        startAndWait(to, QStringLiteral("Easy"));
+        QVERIFY(to.openShared(progress));
+        QTRY_VERIFY_WITH_TIMEOUT(to.active() && !to.loading(), 20000);
+        QCOMPARE(to.level(), QStringLiteral("Sandwich"));
+        QCOMPARE(to.cells(), from.cells());
+        QCOMPARE(to.shareUrl(true), progress);
+        QCOMPARE(to.hintsUsed(), 0);
+
+        SudokuGame fresh;
+        QVERIFY(fresh.openShared(start));
+        QTRY_VERIFY_WITH_TIMEOUT(fresh.active() && !fresh.loading(), 20000);
+        QVERIFY(givens(fresh) == givens(from));
+        QCOMPARE(fresh.shareUrl(false), start);
+
+        // Broken variant links change nothing.
+        for (const QString& bad : { start + QStringLiteral("."), start + QStringLiteral(".1"), QStringLiteral("SW9-00000000"),
+                 QStringLiteral("ZZ1-00000000"), start.toLower() })
+            QVERIFY2(!fresh.openShared(bad), qPrintable(bad));
+        QVERIFY(givens(fresh) == givens(from));
+    }
+
     void padLayoutIsClampedAndPersisted()
     {
         {

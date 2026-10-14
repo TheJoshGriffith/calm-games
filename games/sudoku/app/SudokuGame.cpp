@@ -16,6 +16,7 @@
 #include <algorithm>
 
 using sudoku::Difficulty;
+using sudoku::Variant;
 
 namespace {
 
@@ -58,6 +59,18 @@ QString levelName(Difficulty difficulty)
     return QString::fromUtf8(sudoku::difficultyName(difficulty).data());
 }
 
+QString fromView(std::string_view text)
+{
+    return QString::fromUtf8(text.data(), qsizetype(text.size()));
+}
+
+// The rules of classic Sudoku, compiled once and shared by every classic board.
+std::shared_ptr<const sudoku::VariantModel> classicModel()
+{
+    static const auto model = std::make_shared<const sudoku::VariantModel>(sudoku::baseRules(Variant::Classic));
+    return model;
+}
+
 // The payload of a share link, from the whole URL (any host, so preview
 // deployments work too) or the bare payload.
 QString sharePayload(const QString& link)
@@ -76,6 +89,22 @@ QString sharePayload(const QString& link)
     return text.contains(QLatin1Char('/')) ? QString() : text;
 }
 
+QVariantList cellList(const std::vector<int>& cells)
+{
+    QVariantList out;
+    for (int c : cells)
+        out.append(c);
+    return out;
+}
+
+QVariantList lineList(const std::vector<std::vector<int>>& lines)
+{
+    QVariantList out;
+    for (const auto& line : lines)
+        out.append(QVariant(cellList(line)));
+    return out;
+}
+
 // Snapshot layout: entries, corner marks (2 bytes each), centre marks
 // (2 bytes each), colours, then the completion count.
 constexpr int kSnapshotSize = 81 + 162 + 162 + 81 + 1;
@@ -85,6 +114,8 @@ constexpr int kSnapshotSize = 81 + 162 + 162 + 81 + 1;
 SudokuGame::SudokuGame(QObject* parent)
     : GameSession(parent)
 {
+    m_board.model = classicModel();
+    updateClues();
 #if !CALM_SUDOKU_THREADED_GENERATION
     m_generationTimer = new QTimer(this);
     m_generationTimer->setSingleShot(true);
@@ -92,7 +123,7 @@ SudokuGame::SudokuGame(QObject* parent)
 #endif
     // Warm the buffers so the first game of any level starts instantly.
     for (int d = 0; d < sudoku::DifficultyCount; ++d)
-        requestPuzzle(static_cast<Difficulty>(d));
+        requestPuzzle(d);
 }
 
 SudokuGame::~SudokuGame()
@@ -105,9 +136,181 @@ SudokuGame::~SudokuGame()
 #endif
 }
 
+int SudokuGame::keyFor(const QString& level)
+{
+    if (const auto difficulty = sudoku::parseDifficulty(level.toStdString()))
+        return int(*difficulty);
+    if (const auto variant = sudoku::parseVariant(level.toStdString()); variant && *variant != Variant::Classic)
+        return VariantKey + int(*variant);
+    return int(Difficulty::Medium);
+}
+
+QString SudokuGame::levelFor(int key)
+{
+    if (key >= VariantKey)
+        return fromView(sudoku::variantName(static_cast<Variant>(key - VariantKey)));
+    return levelName(static_cast<Difficulty>(key));
+}
+
+SudokuGame::Generated SudokuGame::produce(int key, quint64 seed)
+{
+    Generated out;
+    if (key >= VariantKey)
+        out.variant = sudoku::generateVariant(static_cast<Variant>(key - VariantKey), seed);
+    else
+        out.classic = sudoku::generate(static_cast<Difficulty>(key), seed);
+    return out;
+}
+
+quint64 SudokuGame::seedOf(const Generated& puzzle)
+{
+    return puzzle.classic ? puzzle.classic->seed : puzzle.variant ? puzzle.variant->seed : 0;
+}
+
+QStringList SudokuGame::variantIds()
+{
+    QStringList out;
+    for (int v = 1; v < sudoku::VariantCount; ++v)
+        out.append(fromView(sudoku::variantId(static_cast<Variant>(v))));
+    return out;
+}
+
+QString SudokuGame::variantLevel(const QString& id)
+{
+    const auto variant = sudoku::parseVariant(id.toStdString());
+    return variant && *variant != Variant::Classic ? fromView(sudoku::variantName(*variant)) : QString();
+}
+
+QString SudokuGame::variantOfLevel(const QString& level)
+{
+    if (sudoku::parseDifficulty(level.toStdString()))
+        return QStringLiteral("classic");
+    const auto variant = sudoku::parseVariant(level.toStdString());
+    return variant ? fromView(sudoku::variantId(*variant)) : QString();
+}
+
+QString SudokuGame::variant() const
+{
+    return fromView(sudoku::variantId(currentVariant()));
+}
+
+bool SudokuGame::sameHouse(int a, int b) const
+{
+    if (a < 0 || b < 0 || a > 80 || b > 80 || a == b)
+        return false;
+    const auto& region = model().rules().region;
+    return sudoku::rowOf(a) == sudoku::rowOf(b) || sudoku::colOf(a) == sudoku::colOf(b) || region[a] == region[b];
+}
+
+QVariantList SudokuGame::blockedFor(int digit) const
+{
+    QVariantList out;
+    out.reserve(81);
+    if (digit < 1 || digit > 9) {
+        for (int i = 0; i < 81; ++i)
+            out.append(false);
+        return out;
+    }
+    for (int i = 0; i < 81; ++i) {
+        const int here = digitAt(i);
+        bool blocked = here != 0 && here != digit;
+        if (!blocked && here == 0) {
+            blocked = !(model().allowed(i) & sudoku::bit(digit));
+            for (int p : model().peers(i))
+                blocked = blocked || digitAt(p) == digit;
+        }
+        out.append(blocked);
+    }
+    return out;
+}
+
+void SudokuGame::updateClues()
+{
+    const sudoku::Rules& rules = model().rules();
+    QVariantMap out;
+    QVariantList regions, parity;
+    for (int i = 0; i < 81; ++i) {
+        regions.append(int(rules.region[i]));
+        parity.append(int(rules.parity[i]));
+    }
+    out.insert(QStringLiteral("regions"), regions);
+    out.insert(QStringLiteral("parity"), parity);
+    out.insert(QStringLiteral("jigsaw"), rules.region != sudoku::standardRegions());
+    out.insert(QStringLiteral("diagonals"), rules.diagonals);
+    out.insert(QStringLiteral("windoku"), rules.windoku);
+    out.insert(QStringLiteral("antiKnight"), rules.antiKnight);
+    out.insert(QStringLiteral("antiKing"), rules.antiKing);
+    out.insert(QStringLiteral("nonConsecutive"), rules.nonConsecutive);
+
+    QVariantList cages;
+    for (const auto& cage : rules.cages)
+        cages.append(QVariantMap { { QStringLiteral("cells"), cellList(cage.cells) }, { QStringLiteral("sum"), cage.sum } });
+    out.insert(QStringLiteral("cages"), cages);
+    out.insert(QStringLiteral("thermos"), lineList(rules.thermos));
+    QVariantList arrows;
+    for (const auto& arrow : rules.arrows)
+        arrows.append(QVariantMap { { QStringLiteral("circle"), arrow.circle }, { QStringLiteral("path"), cellList(arrow.path) } });
+    out.insert(QStringLiteral("arrows"), arrows);
+    QVariantList rowSandwich, colSandwich;
+    bool sandwich = false;
+    for (int i = 0; i < 9; ++i) {
+        rowSandwich.append(int(rules.rowSandwich[static_cast<std::size_t>(i)]));
+        colSandwich.append(int(rules.colSandwich[static_cast<std::size_t>(i)]));
+        sandwich = sandwich || rules.rowSandwich[static_cast<std::size_t>(i)] >= 0 || rules.colSandwich[static_cast<std::size_t>(i)] >= 0;
+    }
+    out.insert(QStringLiteral("rowSandwich"), rowSandwich);
+    out.insert(QStringLiteral("colSandwich"), colSandwich);
+    QVariantList dots;
+    for (const auto& dot : rules.dots) {
+        static const char* kinds[] = { "white", "black", "x", "v" };
+        dots.append(QVariantMap { { QStringLiteral("a"), dot.a }, { QStringLiteral("b"), dot.b },
+            { QStringLiteral("kind"), QString::fromLatin1(kinds[int(dot.kind)]) } });
+    }
+    out.insert(QStringLiteral("dots"), dots);
+    QVariantList littleKillers;
+    for (const auto& clue : rules.littleKillers)
+        littleKillers.append(QVariantMap { { QStringLiteral("row"), clue.row }, { QStringLiteral("col"), clue.col },
+            { QStringLiteral("dr"), clue.dr }, { QStringLiteral("dc"), clue.dc }, { QStringLiteral("sum"), clue.sum } });
+    out.insert(QStringLiteral("littleKillers"), littleKillers);
+    out.insert(QStringLiteral("whispers"), lineList(rules.whispers));
+    out.insert(QStringLiteral("renbans"), lineList(rules.renbans));
+    out.insert(QStringLiteral("palindromes"), lineList(rules.palindromes));
+    out.insert(QStringLiteral("outside"), sandwich || !rules.littleKillers.empty());
+    if (out == m_clues)
+        return;
+    m_clues = out;
+    emit cluesChanged();
+}
+
+sudoku::Grid SudokuGame::digits() const
+{
+    sudoku::Grid out {};
+    for (int i = 0; i < 81; ++i)
+        out[i] = static_cast<std::uint8_t>(digitAt(i));
+    return out;
+}
+
+std::array<bool, 81> SudokuGame::mistakes(int mode) const
+{
+    std::array<bool, 81> out {};
+    switch (mode) {
+    case MistakesClashes:
+        // A digit that repeats where it can't, or breaks a variant's clue.
+        // Givens never clash with each other, so a flagged given always has a
+        // player digit beside it; the UI tints givens only subtly.
+        return sudoku::conflicts(model().rules(), digits());
+    case MistakesAnswer:
+        for (int i = 0; i < 81; ++i)
+            out[i] = !isGiven(i) && m_board.entries[i] != 0 && m_board.entries[i] != m_board.solution[i];
+        return out;
+    default:
+        return out;
+    }
+}
+
 QVariantList SudokuGame::cells() const
 {
-    const int mode = mistakeMode();
+    const auto flagged = mistakes(mistakeMode());
     QVariantList out;
     out.reserve(81);
     for (int i = 0; i < 81; ++i) {
@@ -118,7 +321,7 @@ QVariantList SudokuGame::cells() const
         cell.insert(QStringLiteral("corner"), digit ? 0 : int(m_board.corner[i]));
         cell.insert(QStringLiteral("centre"), digit ? 0 : int(m_board.centre[i]));
         cell.insert(QStringLiteral("colour"), int(m_board.colours[i]));
-        cell.insert(QStringLiteral("mistake"), isMistake(i, mode));
+        cell.insert(QStringLiteral("mistake"), flagged[i]);
         out.append(cell);
     }
     return out;
@@ -199,6 +402,8 @@ void SudokuGame::setFocusDigit(int digit)
 
 QString SudokuGame::technique() const
 {
+    if (currentVariant() != Variant::Classic)
+        return {};
     return QString::fromUtf8(sudoku::techniqueName(m_board.hardest).data());
 }
 
@@ -206,6 +411,8 @@ QString SudokuGame::puzzleCode() const
 {
     if (!active() || !m_board.seedKnown)
         return {};
+    if (currentVariant() != Variant::Classic)
+        return QString::fromStdString(sudoku::variantPuzzleCode(currentVariant(), m_board.seed));
     const auto difficulty = sudoku::parseDifficulty(level().toStdString());
     if (!difficulty)
         return {};
@@ -232,6 +439,11 @@ QString SudokuGame::shareUrl(bool withProgress) const
             }
         }
     }
+    if (currentVariant() != Variant::Classic) {
+        if (!m_board.seedKnown)
+            return {};
+        return ShareUrlBase + QString::fromStdString(sudoku::encodeVariantBoard(currentVariant(), m_board.seed, shared));
+    }
     return ShareUrlBase + QString::fromStdString(sudoku::encodeBoard(shared));
 }
 
@@ -240,6 +452,15 @@ bool SudokuGame::openShared(const QString& link)
     const QString payload = sharePayload(link);
     if (payload.isEmpty())
         return false;
+
+    // A variant link: rebuild its puzzle from the code, then lay the
+    // progress on it.
+    if (const auto variant = sudoku::decodeVariantBoard(payload.toStdString())) {
+        m_pendingProgress = variant->board;
+        startCode(VariantKey + int(variant->variant), variant->seed);
+        return true;
+    }
+
     const auto shared = sudoku::decodeBoard(payload.toStdString());
     if (!shared || sudoku::countSolutions(shared->givens, 2) != 1)
         return false;
@@ -254,6 +475,7 @@ bool SudokuGame::openShared(const QString& link)
     board.puzzle = shared->givens;
     board.solution = *solution;
     board.hardest = graded.hardest;
+    board.model = classicModel();
     // A board that is already solved would be a game with nothing left to
     // do, so it opens at the start instead.
     bool solved = true;
@@ -270,6 +492,7 @@ bool SudokuGame::openShared(const QString& link)
         stopWaiting();
         cancelNewGame();
     }
+    m_pendingProgress.reset();
     m_pendingBoard = board;
     startNewGame(levelName(difficulty));
     m_pendingBoard.reset();
@@ -278,17 +501,28 @@ bool SudokuGame::openShared(const QString& link)
 
 bool SudokuGame::startFromCode(const QString& code)
 {
-    const auto parsed = sudoku::parsePuzzleCode(code.toStdString());
-    if (!parsed)
-        return false;
+    if (const auto parsed = sudoku::parsePuzzleCode(code.toStdString())) {
+        m_pendingProgress.reset();
+        startCode(int(parsed->first), parsed->second);
+        return true;
+    }
+    if (const auto parsed = sudoku::parseVariantPuzzleCode(code.toStdString())) {
+        m_pendingProgress.reset();
+        startCode(VariantKey + int(parsed->first), parsed->second);
+        return true;
+    }
+    return false;
+}
+
+void SudokuGame::startCode(int key, quint64 seed)
+{
     if (loading()) {
         stopWaiting();
         cancelNewGame();
     }
-    m_pendingSeed = parsed->second;
-    startNewGame(levelName(parsed->first));
+    m_pendingSeed = seed;
+    startNewGame(levelFor(key));
     m_pendingSeed.reset();
-    return true;
 }
 
 void SudokuGame::stopWaiting()
@@ -492,8 +726,12 @@ bool SudokuGame::hint()
         for (int i = 0; i < 81; ++i)
             if (m_board.entries[i] == m_board.solution[i])
                 position[i] = m_board.entries[i];
-        if (auto h = sudoku::hint(position))
+        if (currentVariant() == Variant::Classic) {
+            if (auto h = sudoku::hint(position))
+                target = h->cell;
+        } else if (auto h = model().hint(position)) {
             target = h->cell;
+        }
         for (int i = 0; target < 0 && i < 81; ++i)
             if (digitAt(i) != m_board.solution[i])
                 target = i;
@@ -515,31 +753,6 @@ int SudokuGame::digitAt(int cell) const
     return isGiven(cell) ? m_board.puzzle[cell] : m_board.entries[cell];
 }
 
-bool SudokuGame::clashes(int cell) const
-{
-    const int digit = digitAt(cell);
-    if (digit == 0)
-        return false;
-    for (int peer : sudoku::peers()[cell])
-        if (digitAt(peer) == digit)
-            return true;
-    return false;
-}
-
-bool SudokuGame::isMistake(int cell, int mode) const
-{
-    switch (mode) {
-    case MistakesClashes:
-        // Givens never clash with each other, so a flagged given always has a
-        // player digit beside it; the UI tints givens only subtly.
-        return clashes(cell);
-    case MistakesAnswer:
-        return !isGiven(cell) && m_board.entries[cell] != 0 && m_board.entries[cell] != m_board.solution[cell];
-    default:
-        return false;
-    }
-}
-
 void SudokuGame::place(int cell, int digit)
 {
     m_board.entries[cell] = static_cast<std::uint8_t>(digit);
@@ -547,16 +760,16 @@ void SudokuGame::place(int cell, int digit)
     m_board.centre[cell] = 0;
     if (autoRemoveNotes()) {
         const auto keep = static_cast<sudoku::Mask>(~sudoku::bit(digit));
-        for (int peer : sudoku::peers()[cell]) {
+        for (int peer : model().peers(cell)) {
             m_board.corner[peer] &= keep;
             m_board.centre[peer] &= keep;
         }
     }
 }
 
-bool SudokuGame::unitCorrect(int unit) const
+bool SudokuGame::unitCorrect(const std::array<int, 9>& unit) const
 {
-    for (int cell : sudoku::units()[unit])
+    for (int cell : unit)
         if (digitAt(cell) != m_board.solution[cell])
             return false;
     return true;
@@ -565,24 +778,26 @@ bool SudokuGame::unitCorrect(int unit) const
 // One feedback event for the whole placement, however many cells it touched.
 void SudokuGame::afterPlacement(const QList<int>& cells)
 {
-    const int mode = mistakeMode();
+    const auto flaggedCells = mistakes(mistakeMode());
     bool wrong = false;
     bool flagged = false;
     for (int cell : cells) {
         wrong = wrong || digitAt(cell) != m_board.solution[cell];
-        flagged = flagged || isMistake(cell, mode);
+        flagged = flagged || flaggedCells[cell];
     }
     if (wrong || flagged) {
         emitFeedback(flagged ? QStringLiteral("error") : QStringLiteral("tap"));
         return;
     }
 
-    QSet<int> units;
-    for (int cell : cells)
-        units << sudoku::rowOf(cell) << 9 + sudoku::colOf(cell) << 18 + sudoku::boxOf(cell);
+    // Rows, columns and regions (and any diagonals or extra boxes) the
+    // placement just completed.
     int completed = 0;
-    for (int unit : std::as_const(units))
-        completed += unitCorrect(unit);
+    for (const auto& unit : model().units()) {
+        const bool touched = std::any_of(unit.begin(), unit.end(), [&cells](int c) { return cells.contains(c); });
+        if (touched)
+            completed += unitCorrect(unit);
+    }
 
     bool solved = true;
     for (int i = 0; i < 81 && solved; ++i)
@@ -604,63 +819,65 @@ void SudokuGame::createGame(const QString& level)
         startWith(*std::exchange(m_pendingBoard, std::nullopt));
         return;
     }
-    const Difficulty difficulty = sudoku::parseDifficulty(level.toStdString()).value_or(Difficulty::Medium);
-    auto& queue = m_buffer[int(difficulty)];
+    const int key = keyFor(level);
+    auto& queue = m_buffer[key];
     stopWaiting();
 
     // A typed code: that exact puzzle, from the buffer if it happens to be
     // there, else generated now ahead of anything else.
     if (const auto seed = std::exchange(m_pendingSeed, std::nullopt)) {
         for (qsizetype i = 0; i < queue.size(); ++i) {
-            if (queue.at(i).seed == *seed) {
+            if (seedOf(queue.at(i)) == *seed) {
                 startWith(queue.takeAt(i));
-                requestPuzzle(difficulty);
+                requestPuzzle(key);
                 return;
             }
         }
-        m_waitingFor = difficulty;
+        m_waitingFor = key;
         m_waitingSeed = *seed;
-        generate(difficulty, *seed);
+        generate(key, *seed);
         return;
     }
 
     if (!queue.isEmpty()) {
         startWith(queue.takeFirst());
-        requestPuzzle(difficulty);
+        requestPuzzle(key);
         return;
     }
-    m_waitingFor = difficulty;
-    if (m_inFlight.value(int(difficulty)) == 0)
-        requestPuzzle(difficulty);
+    m_waitingFor = key;
+    if (m_inFlight.value(key) == 0)
+        requestPuzzle(key);
 #if !CALM_SUDOKU_THREADED_GENERATION
     scheduleGeneration();
 #endif
 }
 
-void SudokuGame::requestPuzzle(Difficulty difficulty)
+void SudokuGame::requestPuzzle(int key)
 {
-    const int key = int(difficulty);
-    if (m_buffer.value(key).size() + m_inFlight.value(key) >= BufferSize)
+    // Classic levels are warmed from the start; a variant gets its spare
+    // once it has been played.
+    const int size = key >= VariantKey ? VariantBufferSize : BufferSize;
+    if (m_buffer.value(key).size() + m_inFlight.value(key) >= size)
         return;
     // Seeds below 2^40 keep puzzle codes to 8 characters after the level.
-    generate(difficulty, QRandomGenerator::global()->generate64() & sudoku::PuzzleSeedMask);
+    generate(key, QRandomGenerator::global()->generate64() & sudoku::PuzzleSeedMask);
 }
 
-void SudokuGame::generate(Difficulty difficulty, quint64 seed)
+void SudokuGame::generate(int key, quint64 seed)
 {
-    ++m_inFlight[int(difficulty)];
+    ++m_inFlight[key];
 #if CALM_SUDOKU_THREADED_GENERATION
-    auto* watcher = new QFutureWatcher<std::optional<sudoku::Puzzle>>(this);
+    auto* watcher = new QFutureWatcher<Generated>(this);
     m_watchers.append(watcher);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, difficulty, seed] {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, key, seed] {
         m_watchers.removeOne(watcher);
-        const auto puzzle = watcher->result();
+        const Generated puzzle = watcher->result();
         watcher->deleteLater();
-        onPuzzleReady(difficulty, seed, puzzle);
+        onPuzzleReady(key, seed, puzzle);
     });
-    watcher->setFuture(QtConcurrent::run([difficulty, seed] { return sudoku::generate(difficulty, seed); }));
+    watcher->setFuture(QtConcurrent::run([key, seed] { return produce(key, seed); }));
 #else
-    m_pending.append({ difficulty, seed });
+    m_pending.append({ key, seed });
     scheduleGeneration();
 #endif
 }
@@ -687,38 +904,38 @@ void SudokuGame::generateNext()
     qsizetype next = 0;
     if (m_waitingFor) {
         for (qsizetype i = 0; i < m_pending.size(); ++i) {
-            const auto& [difficulty, seed] = m_pending.at(i);
-            if (difficulty == *m_waitingFor && (!m_waitingSeed || *m_waitingSeed == seed)) {
+            const auto& [key, seed] = m_pending.at(i);
+            if (key == *m_waitingFor && (!m_waitingSeed || *m_waitingSeed == seed)) {
                 next = i;
                 break;
             }
         }
     }
-    const auto [difficulty, seed] = m_pending.takeAt(next);
-    onPuzzleReady(difficulty, seed, sudoku::generate(difficulty, seed));
+    const auto [key, seed] = m_pending.takeAt(next);
+    onPuzzleReady(key, seed, produce(key, seed));
     scheduleGeneration();
 }
 #endif
 
-void SudokuGame::onPuzzleReady(Difficulty difficulty, quint64 seed, const std::optional<sudoku::Puzzle>& puzzle)
+void SudokuGame::onPuzzleReady(int key, quint64 seed, const Generated& puzzle)
 {
-    const int key = int(difficulty);
     --m_inFlight[key];
-    const bool wanted = m_waitingFor == difficulty && (!m_waitingSeed || *m_waitingSeed == seed);
-    if (puzzle) {
+    const bool wanted = m_waitingFor == key && (!m_waitingSeed || *m_waitingSeed == seed);
+    if (puzzle.ok()) {
         if (wanted) {
             stopWaiting();
-            startWith(*puzzle);
+            startWith(puzzle);
         } else {
-            m_buffer[key].append(*puzzle);
+            m_buffer[key].append(puzzle);
         }
     } else if (wanted && m_waitingSeed) {
         // A code whose seed never reaches its level: nothing to start.
         stopWaiting();
+        m_pendingProgress.reset();
         cancelNewGame();
         emit codeFailed();
     }
-    requestPuzzle(difficulty);
+    requestPuzzle(key);
 }
 
 void SudokuGame::resetInput()
@@ -728,20 +945,49 @@ void SudokuGame::resetInput()
     setFocusDigit(0);
 }
 
-void SudokuGame::startWith(const sudoku::Puzzle& puzzle)
+void SudokuGame::startWith(const Generated& puzzle)
 {
     Board board;
-    board.puzzle = puzzle.puzzle;
-    board.solution = puzzle.solution;
-    board.hardest = puzzle.hardest;
-    board.seed = puzzle.seed;
+    if (puzzle.classic) {
+        board.puzzle = puzzle.classic->puzzle;
+        board.solution = puzzle.classic->solution;
+        board.hardest = puzzle.classic->hardest;
+        board.seed = puzzle.classic->seed;
+        board.model = classicModel();
+    } else {
+        board.puzzle = puzzle.variant->puzzle;
+        board.solution = puzzle.variant->solution;
+        board.seed = puzzle.variant->seed;
+        board.model = std::make_shared<const sudoku::VariantModel>(puzzle.variant->rules);
+    }
     board.seedKnown = true;
+
+    // Progress from a variant share link goes onto its rebuilt board, unless
+    // it would leave nothing to do.
+    if (const auto progress = std::exchange(m_pendingProgress, std::nullopt); progress && puzzle.variant) {
+        bool solved = true;
+        for (int i = 0; i < 81 && solved; ++i)
+            solved = (board.puzzle[i] ? board.puzzle[i] : progress->entries[i]) == board.solution[i];
+        if (!solved) {
+            for (int i = 0; i < 81; ++i) {
+                board.colours[i] = progress->colour[i];
+                if (board.puzzle[i])
+                    continue;
+                board.entries[i] = progress->entries[i];
+                board.corner[i] = progress->corner[i];
+                board.centre[i] = progress->centre[i];
+            }
+        }
+    }
     startWith(board);
 }
 
 void SudokuGame::startWith(const Board& board)
 {
     m_board = board;
+    if (!m_board.model)
+        m_board.model = classicModel();
+    updateClues();
     setSelected(-1);
     resetInput();
     beginGame();
@@ -762,6 +1008,9 @@ QVariantMap SudokuGame::saveState() const
     state.insert(QStringLiteral("completions"), m_board.completions);
     state.insert(QStringLiteral("selected"), selected());
     state.insert(QStringLiteral("selection"), selection());
+    // Variant games keep their rules too; classic saves stay as they were.
+    if (currentVariant() != Variant::Classic)
+        state.insert(QStringLiteral("rules"), QString::fromStdString(sudoku::encodeRules(model().rules())));
     return state;
 }
 
@@ -770,13 +1019,27 @@ bool SudokuGame::restoreState(const QVariantMap& state)
     const auto puzzle = gridFromString(state.value(QStringLiteral("puzzle")).toString());
     const auto solution = gridFromString(state.value(QStringLiteral("solution")).toString());
     const auto entries = gridFromString(state.value(QStringLiteral("entries")).toString());
-    if (!puzzle || !solution || !entries || !sudoku::isSolved(*solution))
+    if (!puzzle || !solution || !entries)
         return false;
+
+    std::shared_ptr<const sudoku::VariantModel> rules = classicModel();
+    if (state.contains(QStringLiteral("rules"))) {
+        const auto decoded = sudoku::decodeRules(state.value(QStringLiteral("rules")).toString().toStdString());
+        if (!decoded)
+            return false;
+        rules = std::make_shared<const sudoku::VariantModel>(*decoded);
+    }
+    if (!sudoku::satisfies(rules->rules(), *solution))
+        return false;
+    for (int i = 0; i < 81; ++i)
+        if ((*puzzle)[i] && (*puzzle)[i] != (*solution)[i])
+            return false;
 
     Board board;
     board.puzzle = *puzzle;
     board.solution = *solution;
     board.entries = *entries;
+    board.model = rules;
     // Saves from before corner marks existed have one kind of note, `notes`,
     // which were drawn as small digits in the cell: they become centre marks.
     const QString centreKey = state.contains(QStringLiteral("centre")) ? QStringLiteral("centre") : QStringLiteral("notes");
@@ -797,6 +1060,7 @@ bool SudokuGame::restoreState(const QVariantMap& state)
     board.seed = state.value(QStringLiteral("seed")).toString().toULongLong();
     board.completions = state.value(QStringLiteral("completions")).toInt();
     m_board = board;
+    updateClues();
 
     QList<int> restored;
     if (state.contains(QStringLiteral("selection"))) {

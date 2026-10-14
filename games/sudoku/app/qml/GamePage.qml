@@ -38,7 +38,17 @@ CalmPage {
     title: game.level
     subtitle: game.showTimer ? formatTime(game.elapsedSeconds) : ""
 
+    readonly property bool isVariant: game.variant !== "classic"
+    function openRulesSheet() { rulesSheet.open() }
+
     actions: [
+        IconButton {
+            // A variant's rules, a tap away.
+            visible: page.isVariant
+            iconPath: "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M12 11v6M12 7.5v.5"
+            text: qsTr("Rules")
+            onClicked: rulesSheet.open()
+        },
         IconButton {
             id: shareButton
             iconPath: Icons.share
@@ -58,7 +68,7 @@ CalmPage {
     // move the selection and Escape clears it. Shortcuts give way to text
     // fields and stay off while a sheet is open.
     readonly property bool keysEnabled: T.StackView.status === T.StackView.Active
-                                        && !shareSheet.opened && !page.game.loading
+                                        && !shareSheet.opened && !rulesSheet.opened && !page.game.loading
 
     function moveSelection(dx, dy) {
         const from = page.game.selected
@@ -319,6 +329,29 @@ CalmPage {
             subtitle: qsTr("With your digits, notes and colours")
             onClicked: page.share(true)
             Icon { path: Icons.share; color: Theme.accent }
+        }
+    }
+
+    // A variant's rules: the classic rule, then what this variant adds.
+    BottomSheet {
+        id: rulesSheet
+        parent: page
+        title: Variants.name(page.game.variant)
+
+        CalmText {
+            width: parent.width
+            text: Variants.base
+            wrapMode: Text.WordWrap
+            font.pixelSize: 15
+            color: Theme.muted
+        }
+        CalmText {
+            width: parent.width
+            text: Variants.info[page.game.variant] ? Variants.info[page.game.variant].rules : ""
+            wrapMode: Text.WordWrap
+            font.pixelSize: 17
+            lineHeight: 1.1
+            bottomPadding: 8
         }
     }
 }

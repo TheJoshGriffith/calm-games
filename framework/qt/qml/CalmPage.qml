@@ -40,10 +40,18 @@ Item {
         }
 
         Column {
-            anchors.horizontalCenter: parent.horizontalCenter
+            id: titleColumn
+            // Centred on the screen when it fits; a long title next to
+            // several actions moves left (and then elides) rather than run
+            // under them.
+            readonly property real leftEdge: Theme.touch + 8
+            readonly property real rightEdge: parent.width - Math.max(Theme.touch, actionSlot.width) - 8
+            readonly property real wanted: Math.max(titleText.implicitWidth, subtitleText.implicitWidth)
             anchors.verticalCenter: backButton.verticalCenter
-            width: parent.width - 2 * (Theme.touch + 8)
+            width: Math.max(0, Math.min(wanted, rightEdge - leftEdge))
+            x: Math.max(leftEdge, Math.min((parent.width - width) / 2, rightEdge - width))
             CalmText {
+                id: titleText
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 text: page.title
@@ -52,6 +60,7 @@ Item {
                 elide: Text.ElideRight
             }
             CalmText {
+                id: subtitleText
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
                 visible: page.subtitle.length > 0

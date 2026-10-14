@@ -18,10 +18,24 @@ AppWindow {
         onPlayRequested: window.push(gamePage)
         onSettingsRequested: window.push(settingsPage)
         onStatsRequested: window.push(statsPage)
+        onVariantsRequested: window.push(variantsPage)
     }
 
-    // Level ids as Stats records them (and as HomePage starts them).
+    // Level ids as Stats records them (and as HomePage starts them). Each
+    // variant is its own level, named after it.
     readonly property var levels: ["Easy", "Medium", "Hard", "Expert"]
+
+    // The statistics screen lists the classic levels and every variant
+    // played at least once.
+    function statsLevels() {
+        const out = levels.slice()
+        for (const id of sudoku.variantIds()) {
+            const level = sudoku.variantLevel(id)
+            if (Stats.forLevel(sudoku.gameId, level).played > 0)
+                out.push(level)
+        }
+        return out
+    }
 
     // Opens a share link (main.cpp passes web links and iOS universal links
     // here) and shows the game. Returns false if the link holds no puzzle.
@@ -56,8 +70,10 @@ AppWindow {
         }
     }
 
-    // Development aids: --play <Level> opens a new game, --settings the
-    // settings, --stats the statistics. --dark shows the dark theme for this
+    // Development aids: --play <Level> opens a new game (--variant <id> one of
+    // a variant, such as killer or anti-knight; --rules then shows its rules),
+    // --variants the variant picker, --settings the settings, --stats the
+    // statistics. --dark shows the dark theme for this
     // run only. With --play, --demo-input seeds marks, colours, a clash and a
     // multi-selection for screenshots, --mode <Number|Corner|Centre|Colour>
     // picks the input mode, --focus <digit> focuses a digit with nothing
@@ -69,6 +85,7 @@ AppWindow {
     property bool demoInput: false
     property int demoFocus: 0
     property bool demoShareSheet: false
+    property bool demoRules: false
     property Item demoPage: null
 
     Component.onCompleted: {
@@ -77,20 +94,27 @@ AppWindow {
             themeBeforeDev = Settings.theme
             Settings.theme = "dark"
         }
-        const play = args.indexOf("--play")
-        if (play >= 0 && play + 1 < args.length) {
+        let play = args.indexOf("--play")
+        let level = play >= 0 && play + 1 < args.length ? args[play + 1] : ""
+        const variant = args.indexOf("--variant")
+        if (variant >= 0 && variant + 1 < args.length)
+            level = sudoku.variantLevel(args[variant + 1])
+        if (level !== "") {
             demoInput = args.indexOf("--demo-input") >= 0
             const focus = args.indexOf("--focus")
             demoFocus = focus >= 0 && focus + 1 < args.length ? parseInt(args[focus + 1]) : 0
             demoShareSheet = args.indexOf("--share-sheet") >= 0
-            demoPending = demoInput || demoFocus > 0 || demoShareSheet
-            sudoku.startNewGame(args[play + 1])
+            demoRules = args.indexOf("--rules") >= 0
+            demoPending = demoInput || demoFocus > 0 || demoShareSheet || demoRules
+            sudoku.startNewGame(level)
             demoPage = window.push(gamePage)
             seedDemoWhenReady()
         } else if (args.indexOf("--enter-code") >= 0) {
             const code = args.indexOf("--enter-code")
             const text = code + 1 < args.length && !args[code + 1].startsWith("--") ? args[code + 1] : ""
             homePage.openCodeSheet(text)
+        } else if (args.indexOf("--variants") >= 0) {
+            window.push(variantsPage)
         } else if (args.indexOf("--settings") >= 0) {
             window.push(settingsPage)
         } else if (args.indexOf("--stats") >= 0) {
@@ -125,6 +149,8 @@ AppWindow {
         }
         if (demoShareSheet && demoPage)
             demoPage.openShareSheet()
+        if (demoRules && demoPage)
+            demoPage.openRulesSheet()
     }
 
     function seedDemo() {
@@ -199,9 +225,19 @@ AppWindow {
         id: gamePage
         GamePage {
             game: sudoku
-            onBackRequested: window.pop()
+            // Home, even when the game was started from the variant picker.
+            onBackRequested: window.stack.pop(window.stack.get(0))
             onSettingsRequested: window.push(settingsPage)
             onNoteRequested: (message) => window.showNote(message)
+        }
+    }
+
+    Component {
+        id: variantsPage
+        VariantsPage {
+            game: sudoku
+            onBackRequested: window.pop()
+            onPlayRequested: window.push(gamePage)
         }
     }
 
@@ -217,7 +253,7 @@ AppWindow {
         id: statsPage
         StatsPage {
             gameId: sudoku.gameId
-            levels: window.levels
+            levels: window.statsLevels()
             onBackRequested: window.pop()
         }
     }
