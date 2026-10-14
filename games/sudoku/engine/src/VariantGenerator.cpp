@@ -116,8 +116,10 @@ struct Canvas {
 
 // A random walk through free, touching cells, each step allowed by `accept`.
 template <typename Accept>
-std::vector<int> walk(calm::Rng& rng, const Canvas& canvas, int start, int maxLen, Accept&& accept)
+std::vector<int> walk(calm::Rng& rng, const Canvas& claimed, int start, int maxLen, Accept&& accept)
 {
+    // Steps so far count too, so a line never crosses itself.
+    Canvas canvas = claimed;
     std::vector<int> path { start };
     while (static_cast<int>(path.size()) < maxLen) {
         std::vector<int> options;
@@ -127,7 +129,9 @@ std::vector<int> walk(calm::Rng& rng, const Canvas& canvas, int start, int maxLe
                 options.push_back(n);
         if (options.empty())
             break;
-        path.push_back(options[rng.below(static_cast<std::uint32_t>(options.size()))]);
+        const int next = options[rng.below(static_cast<std::uint32_t>(options.size()))];
+        canvas.claim({ path.back(), next });
+        path.push_back(next);
     }
     return path;
 }
@@ -402,7 +406,7 @@ void addClues(Rules& rules, calm::Rng& rng, const Grid& solution)
             [](const std::vector<int>&) { return true; });
         break;
     case Variant::Arrow:
-        rules.arrows = arrowClues(rng, canvas, solution, 9);
+        rules.arrows = arrowClues(rng, canvas, solution, 8);
         break;
     case Variant::Sandwich:
         for (int k = 0; k < 9; ++k) {
@@ -490,7 +494,11 @@ std::optional<VariantPuzzle> generateVariant(Variant variant, std::uint64_t seed
 
         std::optional<Grid> solution;
         {
-            const VariantModel global(rules);
+            // The global rules only: "every dot is shown" means nothing until
+            // the dots are read off the solution.
+            Rules globalRules = rules;
+            globalRules.dotsComplete = false;
+            const VariantModel global(globalRules);
             // Short searches restarted often find a grid far sooner than one long
             // search stuck in a dead end (Non-Consecutive especially).
             const int restarts = variant == Variant::NonConsecutive ? 400 : 30;

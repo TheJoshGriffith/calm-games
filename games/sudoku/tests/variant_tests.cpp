@@ -262,6 +262,31 @@ void generatorMakesUniquePuzzles()
             // Same seed, same puzzle.
             const auto again = sudoku::generateVariant(v, seed);
             CHECK(again && again->rules == puzzle->rules && again->puzzle == puzzle->puzzle);
+            // Clue variants really have their clues (several of each).
+            const auto& r = puzzle->rules;
+            int sandwiches = 0, shaded = 0;
+            for (int i = 0; i < 9; ++i)
+                sandwiches += (r.rowSandwich[static_cast<std::size_t>(i)] >= 0) + (r.colSandwich[static_cast<std::size_t>(i)] >= 0);
+            for (auto p : r.parity)
+                shaded += p != 0;
+            const std::size_t clueItems = r.cages.size() + r.thermos.size() + r.arrows.size() + static_cast<std::size_t>(sandwiches)
+                + r.dots.size() + static_cast<std::size_t>(shaded) + r.littleKillers.size() + r.whispers.size()
+                + r.renbans.size() + r.palindromes.size();
+            switch (v) {
+            case Variant::Diagonal:
+            case Variant::AntiKnight:
+            case Variant::AntiKing:
+            case Variant::Windoku:
+            case Variant::NonConsecutive:
+            case Variant::Jigsaw:
+                CHECK(clueItems == 0);
+                break;
+            default:
+                CHECK(clueItems >= 3);
+                break;
+            }
+            if (v == Variant::Kropki || v == Variant::XV)
+                CHECK(r.dotsComplete && r.dots.size() >= 10);
             if (v == Variant::Jigsaw)
                 CHECK(puzzle->rules.region != sudoku::standardRegions() && sudoku::validRegions(puzzle->rules.region));
         }
@@ -317,24 +342,55 @@ void variantCodes()
     CHECK(!sudoku::decodeBoard(payload));
 }
 
-#define KILLER_GOLDEN "625374819387691425149528763438152976592867341761439582274913658853246197916785234"
-#define JIGSAW_GOLDEN "000000090000009010370000400000000500060000080001000000007000063040200000090000000"
-
+// A fingerprint of every variant's puzzle for seed 4 (rules and givens).
 // Pins generateVariant's output: if this fails, either revert the change or
-// bump VariantGeneratorVersion (and update these lines).
+// bump VariantGeneratorVersion and update the list (CALM_PRINT_GOLDEN=1
+// prints it).
+const char* kGolden[] = {
+    "7cdf13bfa8fb03bf", // Diagonal
+    "d60c50bf25b66777", // Anti-Knight
+    "0e2f0823974a0b0f", // Anti-King
+    "3135311a3cb7b021", // Windoku
+    "4839398838aa0391", // Non-Consecutive
+    "c07c02ed5f08ff15", // Jigsaw
+    "4f793a1459b31c9f", // Killer
+    "e64b7f7b2f3d5744", // Thermo
+    "ba716474b8c230fa", // Arrow
+    "373db3680fd0e9a9", // Sandwich
+    "10061aa2870d3f1e", // Kropki
+    "2360e0d96290d808", // XV
+    "7baa6c7fabc545b2", // Even-Odd
+    "e4f962e9b0cb388d", // Little Killer
+    "ef9db6d2b4b6134d", // German Whispers
+    "88fc73f78b75f035", // Renban
+    "0019bd4de30784e5", // Palindrome
+};
+
+std::uint64_t fingerprint(const std::string& text)
+{
+    std::uint64_t h = 14695981039346656037ull; // FNV-1a
+    for (unsigned char c : text) {
+        h ^= c;
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
 void golden()
 {
-    const auto killer = sudoku::generateVariant(Variant::Killer, 4);
-    const auto jigsaw = sudoku::generateVariant(Variant::Jigsaw, 4);
-    CHECK(killer && jigsaw);
-    if (!killer || !jigsaw)
-        return;
-    const std::string k = sudoku::formatGrid(killer->solution);
-    const std::string j = sudoku::formatGrid(jigsaw->puzzle);
-    if (std::getenv("CALM_PRINT_GOLDEN"))
-        std::printf("killer %s\njigsaw %s\n", k.c_str(), j.c_str());
-    CHECK(k == KILLER_GOLDEN);
-    CHECK(j == JIGSAW_GOLDEN);
+    const auto variants = allVariants();
+    for (std::size_t i = 0; i < variants.size(); ++i) {
+        const auto puzzle = sudoku::generateVariant(variants[i], 4);
+        CHECK(puzzle.has_value());
+        if (!puzzle)
+            continue;
+        char hex[17];
+        std::snprintf(hex, sizeof hex, "%016llx",
+            static_cast<unsigned long long>(fingerprint(sudoku::encodeRules(puzzle->rules) + sudoku::formatGrid(puzzle->puzzle))));
+        if (std::getenv("CALM_PRINT_GOLDEN"))
+            std::printf("    \"%s\", // %s\n", hex, std::string(sudoku::variantName(variants[i])).c_str());
+        CHECK(i < std::size(kGolden) && std::string(hex) == kGolden[i]);
+    }
 }
 
 void bench(int seeds)
