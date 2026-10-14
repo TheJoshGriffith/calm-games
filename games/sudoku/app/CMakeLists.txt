@@ -40,6 +40,13 @@ if(CALM_BUILD_TESTS)
     add_test(NAME sudoku_app_smoke COMMAND CalmSudoku)
     set_tests_properties(sudoku_app_smoke PROPERTIES
         ENVIRONMENT "CALM_SMOKE_TEST=1;QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+    # The game screen with the busiest clues (cages, then sums outside the
+    # grid), with notes and colours on it and the rules sheet open.
+    foreach(variant killer little-killer)
+        add_test(NAME sudoku_app_smoke_${variant} COMMAND CalmSudoku --variant ${variant} --demo-input --rules)
+        set_tests_properties(sudoku_app_smoke_${variant} PROPERTIES
+            ENVIRONMENT "CALM_SMOKE_TEST=1;QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+    endforeach()
 endif()
 
 if(IOS)
