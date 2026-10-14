@@ -9,6 +9,7 @@ Item {
     signal playRequested()
     signal settingsRequested()
     signal statsRequested()
+    signal variantsRequested()
 
     readonly property var levels: [
         { name: "Easy", hint: qsTr("Singles only"), dots: 1 },
@@ -51,7 +52,7 @@ Item {
             page.playRequested()
             return
         }
-        codeError = qsTr("That code doesn't look right. Codes look like H1-3KX9QZ0A.")
+        codeError = qsTr("That code doesn't look right. Codes look like H1-3KX9QZ0A or KL1-3KX9QZ0A.")
     }
 
     Rectangle {
@@ -141,6 +142,15 @@ Item {
                             }
                         }
                     }
+                }
+
+                CardButton {
+                    width: parent.width
+                    text: qsTr("Variants")
+                    subtitle: qsTr("Killer, Thermo, Jigsaw and more")
+                    onClicked: page.variantsRequested()
+                    // Four cells, one with a cage corner: a twist on the grid.
+                    Icon { path: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM15 15h3v3h-3z"; color: Theme.accent }
                 }
 
                 CardButton {

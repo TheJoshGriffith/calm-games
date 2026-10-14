@@ -142,7 +142,9 @@ Every Sudoku game can be shared from the share button in the game's header:
 as its puzzle code (`H1-3KX9QZ0A`, typed in under "Enter a puzzle code" on
 the home screen) or as a link, `https://sudoku.gwynant.app/s/<payload>`, to
 the starting board or to the board with the player's digits, marks and
-colours (format in `games/sudoku/engine/include/sudoku/Share.h`).
+colours (format in `games/sudoku/engine/include/sudoku/Share.h`). Variant
+puzzles (`KL1-3KX9QZ0A`) share their code instead of their clues, followed by
+`.` and the progress: the app rebuilds the puzzle from the code.
 
 - **Web.** `games/sudoku/app/web/site/_redirects` serves `index.html` for
   `/s/*`. It is a rewrite, so the address bar keeps the link. The page passes

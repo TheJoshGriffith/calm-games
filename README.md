@@ -62,6 +62,29 @@ Generate puzzles:
 
 The same logical solver powers hints.
 
+## Variants
+
+Sudoku also comes in 17 variants, each its own level with its own stats,
+picked from "Variants" on the home screen:
+
+- **Extra rules:** Diagonal, Anti-Knight, Anti-King, Windoku,
+  Non-Consecutive, Jigsaw (irregular regions).
+- **Clues on the grid:** Killer, Thermo, Arrow, Sandwich, Kropki (all dots
+  shown), XV (all marks shown), Even-Odd, Little Killer, German Whispers,
+  Renban, Palindrome.
+
+`games/sudoku/engine/include/sudoku/Variant.h` describes a variant's rules;
+`VariantSolver.h` solves them by constraint propagation (singles, locked
+candidates, pairwise rules for lines and dots, and a search over each cage,
+arrow, sum or renban line for the digits it still allows) with backtracking
+on top. `generateVariant()` fills a grid under the global rules, reads the
+clues off it (cages, thermometers along rising paths, arrows whose path sums
+to the circle, every dot...), then removes givens while propagation alone
+still solves the puzzle, so every variant puzzle has one solution and needs
+no guessing. Each takes a few milliseconds (Non-Consecutive, the slowest,
+under a quarter of a second). Variant codes look like `KL1-3KX9QZ0A`, and
+variant share links carry that code plus the player's progress.
+
 ## Licence
 
 GPL-3.0-or-later. See [LICENSE](LICENSE). Qt is used under the LGPLv3. The

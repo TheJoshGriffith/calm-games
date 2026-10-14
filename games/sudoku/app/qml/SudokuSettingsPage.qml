@@ -108,7 +108,7 @@ SettingsPage {
                 font.pixelSize: 13
                 color: Theme.muted
                 text: [qsTr("Mistakes aren't marked."),
-                       qsTr("Marks a number that repeats in its row, column or box."),
+                       qsTr("Marks a number that repeats in its row, column or box, or breaks a variant's rule."),
                        qsTr("Marks any number that differs from the answer.")][page.game.mistakeMode]
             }
         }

@@ -39,4 +39,11 @@ QtObject {
             return "transparent"
         return Theme.dark ? dark[n - 1] : light[n - 1]
     }
+
+    // Variant clue lines, soft enough to sit under the digits: thermometers
+    // grey, German whispers green, renban purple, palindromes blue.
+    readonly property color thermo: Theme.dark ? "#3C4B53" : "#CDD5D9"
+    readonly property color whisper: Theme.dark ? "#3E6A3B" : "#A8D49A"
+    readonly property color renban: Theme.dark ? "#56477C" : "#CDBAEE"
+    readonly property color palindrome: Theme.dark ? "#365879" : "#A9C7E5"
 }

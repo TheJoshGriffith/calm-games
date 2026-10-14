@@ -92,6 +92,18 @@ export default async function sudokuChecks(t) {
   });
 
   // A link with no puzzle in it is turned away and the app carries on.
+  // A variant link names its puzzle by code: the app rebuilds the Killer
+  // puzzle (on the browser's main thread) and opens it with its cages.
+  await t.step('variant share link', async () => {
+    const { page, log } = await t.shoot('sudoku-web-killer', '/s/KL1-00000004', t.phone, 6000);
+    try {
+      if (!log.some(l => l.includes('share link: opened KL1-00000004')))
+        t.fail(`variant share link: the app did not open it\n${log.slice(-20).join('\n')}`);
+    } finally {
+      await page.close();
+    }
+  });
+
   await t.step('bad share link', async () => {
     const { page, log } = await t.open('bad-share', '/s/not-a-board');
     try {
