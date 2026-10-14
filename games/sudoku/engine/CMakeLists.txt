@@ -5,6 +5,9 @@ add_library(sudoku_engine STATIC
     src/Grader.cpp
     src/Generator.cpp
     src/Share.cpp
+    src/Variant.cpp
+    src/VariantSolver.cpp
+    src/VariantGenerator.cpp
 )
 add_library(Sudoku::Engine ALIAS sudoku_engine)
 target_include_directories(sudoku_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

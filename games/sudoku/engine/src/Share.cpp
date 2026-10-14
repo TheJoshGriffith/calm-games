@@ -1,6 +1,7 @@
 #include "sudoku/Share.h"
 
 #include "sudoku/Generator.h"
+#include "sudoku/VariantGenerator.h"
 
 #include <vector>
 
@@ -376,28 +377,31 @@ std::string puzzleCode(Difficulty difficulty, std::uint64_t seed)
     return code;
 }
 
-std::optional<std::pair<Difficulty, std::uint64_t>> parsePuzzleCode(std::string_view code)
+namespace {
+
+void trim(std::string_view& code)
 {
     auto isSpace = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
     while (!code.empty() && isSpace(code.front()))
         code.remove_prefix(1);
     while (!code.empty() && isSpace(code.back()))
         code.remove_suffix(1);
-    if (code.size() < 3 || code.size() > 64)
-        return std::nullopt;
+}
 
-    std::optional<Difficulty> difficulty;
-    for (int d = 0; d < DifficultyCount; ++d) {
-        const char letter = levelLetter(static_cast<Difficulty>(d));
-        if (code[0] == letter || code[0] == letter - 'A' + 'a')
-            difficulty = static_cast<Difficulty>(d);
-    }
-    if (!difficulty || code[1] != '0' + GeneratorVersion)
-        return std::nullopt;
-    code.remove_prefix(2);
+std::string seedText(std::uint64_t seed)
+{
+    std::string out;
+    const int chars = seed <= PuzzleSeedMask ? 8 : 13;
+    for (int i = chars - 1; i >= 0; --i)
+        out.push_back(kCrockford[static_cast<std::size_t>((seed >> (5 * i)) & 31u)]);
+    return out;
+}
+
+// "-" then 8 or 13 Crockford characters, extra dashes ignored.
+std::optional<std::uint64_t> parseSeed(std::string_view code)
+{
     if (code.empty() || code[0] != '-')
         return std::nullopt;
-
     std::vector<int> values;
     for (char c : code) {
         if (c == '-')
@@ -415,7 +419,85 @@ std::optional<std::pair<Difficulty, std::uint64_t>> parsePuzzleCode(std::string_
     std::uint64_t seed = 0;
     for (int value : values)
         seed = (seed << 5) | static_cast<std::uint64_t>(value);
-    return std::make_pair(*difficulty, seed);
+    return seed;
+}
+
+} // namespace
+
+std::optional<std::pair<Difficulty, std::uint64_t>> parsePuzzleCode(std::string_view code)
+{
+    trim(code);
+    if (code.size() < 3 || code.size() > 64)
+        return std::nullopt;
+
+    std::optional<Difficulty> difficulty;
+    for (int d = 0; d < DifficultyCount; ++d) {
+        const char letter = levelLetter(static_cast<Difficulty>(d));
+        if (code[0] == letter || code[0] == letter - 'A' + 'a')
+            difficulty = static_cast<Difficulty>(d);
+    }
+    if (!difficulty || code[1] != '0' + GeneratorVersion)
+        return std::nullopt;
+    const auto seed = parseSeed(code.substr(2));
+    if (!seed)
+        return std::nullopt;
+    return std::make_pair(*difficulty, *seed);
+}
+
+std::string variantPuzzleCode(Variant variant, std::uint64_t seed)
+{
+    std::string code(variantCode(variant));
+    code.push_back(static_cast<char>('0' + VariantGeneratorVersion));
+    code.push_back('-');
+    return code + seedText(seed);
+}
+
+std::optional<std::pair<Variant, std::uint64_t>> parseVariantPuzzleCode(std::string_view code)
+{
+    trim(code);
+    if (code.size() < 4 || code.size() > 64)
+        return std::nullopt;
+    const auto variant = parseVariant(code.substr(0, 2));
+    if (!variant || *variant == Variant::Classic || variantCode(*variant).size() != 2
+        || code[2] != '0' + VariantGeneratorVersion)
+        return std::nullopt;
+    const auto seed = parseSeed(code.substr(3));
+    if (!seed)
+        return std::nullopt;
+    return std::make_pair(*variant, *seed);
+}
+
+std::string encodeVariantBoard(Variant variant, std::uint64_t seed, const SharedBoard& progress)
+{
+    std::string out = variantPuzzleCode(variant, seed);
+    SharedBoard board = progress;
+    board.givens = {};
+    board.level.reset();
+    if (board != SharedBoard {})
+        out += '.' + encodeBoard(board);
+    return out;
+}
+
+std::optional<SharedVariantBoard> decodeVariantBoard(std::string_view payload)
+{
+    if (payload.size() > kMaxPayload + 32)
+        return std::nullopt;
+    const auto dot = payload.find('.');
+    const auto codeText = payload.substr(0, dot);
+    const auto code = parseVariantPuzzleCode(codeText);
+    // Only the canonical spelling, as encodeVariantBoard writes it.
+    if (!code || codeText != variantPuzzleCode(code->first, code->second))
+        return std::nullopt;
+    SharedVariantBoard out;
+    out.variant = code->first;
+    out.seed = code->second;
+    if (dot != std::string_view::npos) {
+        const auto board = decodeBoard(payload.substr(dot + 1));
+        if (!board || board->level || board->givens != Grid {} || *board == SharedBoard {})
+            return std::nullopt;
+        out.board = *board;
+    }
+    return out;
 }
 
 } // namespace sudoku

@@ -2,6 +2,7 @@
 
 #include "sudoku/Board.h"
 #include "sudoku/Grader.h"
+#include "sudoku/Variant.h"
 
 #include <array>
 #include <cstdint>
@@ -71,5 +72,25 @@ std::string puzzleCode(Difficulty difficulty, std::uint64_t seed);
 // Rejects codes from another generator version, since they would not
 // reproduce the same puzzle.
 std::optional<std::pair<Difficulty, std::uint64_t>> parsePuzzleCode(std::string_view code);
+
+// Variant puzzle codes: two variant letters (see variantCode), the variant
+// generator version digit, a dash, then the seed as above, e.g.
+// "KL1-3KX9QZ0A". The second character is a letter, never a digit, so these
+// never collide with classic codes.
+std::string variantPuzzleCode(Variant variant, std::uint64_t seed);
+std::optional<std::pair<Variant, std::uint64_t>> parseVariantPuzzleCode(std::string_view code);
+
+// Variant share-link payloads carry no clues: the receiver rebuilds the
+// puzzle from its code. The payload is the variant puzzle code, optionally
+// followed by '.' and a format-1 payload holding the player's progress
+// (entries, marks and colours; its givens section is always empty). Classic
+// payloads never contain '.', so the two never overlap.
+struct SharedVariantBoard {
+    Variant variant = Variant::Classic;
+    std::uint64_t seed = 0;
+    SharedBoard board; // givens empty, level unset
+};
+std::string encodeVariantBoard(Variant variant, std::uint64_t seed, const SharedBoard& progress);
+std::optional<SharedVariantBoard> decodeVariantBoard(std::string_view payload);
 
 } // namespace sudoku

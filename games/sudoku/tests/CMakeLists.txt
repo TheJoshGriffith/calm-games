@@ -13,3 +13,7 @@ if(CALM_BUILD_APPS)
     add_test(NAME sudoku_game_tests COMMAND sudoku_game_tests)
     set_tests_properties(sudoku_game_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
+
+add_executable(sudoku_variant_tests variant_tests.cpp)
+target_link_libraries(sudoku_variant_tests PRIVATE Sudoku::Engine)
+add_test(NAME sudoku_variant_tests COMMAND sudoku_variant_tests)
