@@ -52,6 +52,10 @@ public:
     RevealResult chord(int cell);
     // Flags or unflags a hidden cell. Returns false if the cell is revealed.
     bool toggleFlag(int cell);
+    // On a revealed number whose hidden neighbours must all be mines (hidden
+    // plus flagged equals the number), flags them. Uses only what the player
+    // can see. Returns how many flags it placed.
+    int flagAround(int cell);
     // Shows every mine (after a loss) without counting them as safe reveals.
     void setState(int cell, Cell state) { m_state[cell] = state; }
 

@@ -142,8 +142,19 @@ void MinesweeperGame::flag(int cell)
 
 void MinesweeperGame::flagCell(int cell, bool hinted)
 {
-    if (!playable(cell) || m_field.state(cell) == Cell::Revealed)
+    if (!playable(cell))
         return;
+    if (m_field.state(cell) == Cell::Revealed) {
+        // A number whose hidden neighbours must all be mines flags them all.
+        minesweeper::Field next = m_field;
+        if (hinted || next.flagAround(cell) == 0)
+            return;
+        beginMove();
+        m_field = next;
+        emitFeedback(QStringLiteral("soft"));
+        endMove();
+        return;
+    }
     beginMove();
     if (hinted)
         noteHintUsed();

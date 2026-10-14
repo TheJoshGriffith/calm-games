@@ -74,6 +74,22 @@ void flagsAndChords()
     CHECK(f.flagCount() == 0);
 }
 
+void flagAroundOnlyWhenCertain()
+{
+    Field f = smallField();
+    f.reveal(0);                    // opens columns 0-2
+    CHECK(f.flagAround(0) == 0);    // empty cell
+    CHECK(f.flagAround(3) == 0);    // hidden cell
+    CHECK(f.flagAround(6) == 0);    // the 2 at (1,2) has three hidden neighbours
+    CHECK(f.flagAround(2) == 0);    // the 1 at (0,2) has two hidden neighbours
+    f.reveal(7);                    // the 2 at (1,3): its hidden neighbours are both mines
+    CHECK(f.flagAround(7) == 2);
+    CHECK(f.state(3) == Cell::Flagged);
+    CHECK(f.state(11) == Cell::Flagged);
+    CHECK(f.flagAround(7) == 0);    // nothing left to flag
+    CHECK(f.flagCount() == 2);
+}
+
 void wrongChordHitsMine()
 {
     Field f = smallField();
@@ -170,6 +186,7 @@ int main()
         { "neighbours and counts", neighboursAndCounts },
         { "reveal floods empty area", revealFloodsEmptyArea },
         { "flags and chords", flagsAndChords },
+        { "flag around only when certain", flagAroundOnlyWhenCertain },
         { "wrong chord hits mine", wrongChordHitsMine },
         { "first tap is always an open area", firstTapIsAlwaysOpenArea },
         { "no-guess boards solve by logic", noGuessBoardsSolveByLogic },

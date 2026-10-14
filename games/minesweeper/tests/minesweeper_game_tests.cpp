@@ -103,6 +103,30 @@ private slots:
         QVERIFY(!game.hasSavedGame());
     }
 
+    void flaggingANumberFlagsCertainNeighbours()
+    {
+        MinesweeperGame game;
+        game.startNewGame(QStringLiteral("Hard"));
+        game.open(centre(game));
+        int flagsAround = 0;
+        for (int guard = 0; guard < 2000 && !game.complete(); ++guard) {
+            const int before = game.minesLeft();
+            for (int i = 0; i < game.columns() * game.rows(); ++i) {
+                const int view = game.cells().at(i).toInt();
+                if (view >= 1 && view <= 8)
+                    game.flag(i);
+            }
+            flagsAround += before - game.minesLeft();
+            QVERIFY(!game.lost());
+            // Every flag placed so far is a mine, so a hint never takes one back.
+            const int flags = count(game, MinesweeperGame::Flagged);
+            QVERIFY(game.hint());
+            QVERIFY(count(game, MinesweeperGame::Flagged) >= flags);
+        }
+        QVERIFY(game.complete());
+        QVERIFY(flagsAround > 0);
+    }
+
     void hintRemovesWrongFlagFirst()
     {
         MinesweeperGame game;
