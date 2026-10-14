@@ -158,6 +158,124 @@ Item {
             }
         }
 
+        // The drop-target bank: three bars that sink away when struck.
+        Repeater {
+            model: 3
+            Rectangle {
+                required property int index
+                readonly property var target: table.game.dropTargets[index]
+                readonly property bool down: target ? target.down : false
+                x: target ? target.x1 * table.unit : 0
+                y: target ? (target.y1 - 1) * table.unit : 0
+                width: target ? (target.x2 - target.x1) * table.unit : 0
+                height: 2 * table.unit
+                radius: height / 2
+                color: Theme.entry
+                opacity: down ? 0.18 : 1
+                scale: down ? 0.85 : 1
+                Behavior on opacity { NumberAnimation { duration: Theme.gentle } }
+                Behavior on scale { NumberAnimation { duration: Theme.gentle; easing.type: Easing.OutCubic } }
+            }
+        }
+
+        // Stars: appear somewhere new, breathe gently, fade if left alone.
+        Repeater {
+            model: 3
+            Item {
+                id: star
+                required property int index
+                readonly property var info: table.game.stars[index]
+                readonly property bool active: info ? info.active : false
+                readonly property real r: info ? info.r * table.unit : 0
+                x: info ? info.x * table.unit - r : 0
+                y: info ? info.y * table.unit - r : 0
+                width: 2 * r
+                height: width
+                opacity: active ? 1 - 0.75 * info.fade : 0
+                scale: active ? 1 : 0.4
+                visible: opacity > 0.01
+                Behavior on opacity { NumberAnimation { duration: Theme.gentle } }
+                Behavior on scale { NumberAnimation { duration: Theme.gentle; easing.type: Easing.OutBack } }
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: parent.width * 1.5
+                    height: width
+                    radius: width / 2
+                    color: Theme.entry
+                    opacity: 0.14
+                    SequentialAnimation on scale {
+                        running: star.active && !Settings.reduceMotion
+                        loops: Animation.Infinite
+                        NumberAnimation { from: 0.85; to: 1.1; duration: 1400; easing.type: Easing.InOutSine }
+                        NumberAnimation { from: 1.1; to: 0.85; duration: 1400; easing.type: Easing.InOutSine }
+                    }
+                }
+                Shape {
+                    anchors.fill: parent
+                    ShapePath {
+                        scale: Qt.size(star.width / 24, star.width / 24)
+                        fillColor: Theme.entry
+                        strokeColor: Theme.entry
+                        strokeWidth: 1
+                        joinStyle: ShapePath.RoundJoin
+                        PathSvg { path: "M12 2.5l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 16.9l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z" }
+                    }
+                }
+            }
+        }
+
+        // A ring that blooms where a star was caught.
+        Repeater {
+            model: 3
+            Rectangle {
+                id: bloom
+                required property int index
+                property real grow: 0
+                readonly property var info: table.game.stars[index]
+                property real cx: 0
+                property real cy: 0
+                x: cx - width / 2
+                y: cy - height / 2
+                width: (6 + 14 * grow) * table.unit
+                height: width
+                radius: width / 2
+                color: "transparent"
+                border.color: Theme.entry
+                border.width: Math.max(1, 0.6 * table.unit)
+                opacity: grow > 0 && grow < 1 ? 1 - grow : 0
+                NumberAnimation on grow {
+                    id: bloomAnim
+                    running: false
+                    from: 0; to: 1
+                    duration: Theme.slow
+                    easing.type: Easing.OutCubic
+                }
+                Connections {
+                    target: table.game
+                    function onStarCollected(slot) {
+                        if (slot !== bloom.index || !bloom.info)
+                            return
+                        bloom.cx = bloom.info.x * table.unit
+                        bloom.cy = bloom.info.y * table.unit
+                        bloomAnim.restart()
+                    }
+                }
+            }
+        }
+
+        // While a ball save is running, a soft bar guards the drain.
+        Rectangle {
+            x: 44 * table.unit
+            y: 166 * table.unit
+            width: 12 * table.unit
+            height: 1.2 * table.unit
+            radius: height / 2
+            color: Theme.accent
+            opacity: table.game.ballSave ? 0.7 : 0
+            Behavior on opacity { NumberAnimation { duration: Theme.gentle } }
+        }
+
         // The plunger at the foot of the launch lane, drawn back as it charges.
         Rectangle {
             readonly property real laneWidth: table.game.tableWidth - 4 - table.game.laneLeft
@@ -222,6 +340,32 @@ Item {
                 radius: width / 2
                 color: Theme.surface
                 opacity: 0.45
+            }
+        }
+
+        // Short messages ("Stage 2", "Ball saved") that float up and fade.
+        CalmText {
+            id: announcement
+            property real t: 1
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: (112 - 6 * t) * table.unit
+            font.pixelSize: Math.max(18, 6 * table.unit)
+            font.weight: Font.ExtraBold
+            color: Theme.accent
+            opacity: t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85
+            visible: t < 1
+            NumberAnimation on t {
+                id: announceAnim
+                running: false
+                from: 0; to: 1
+                duration: Settings.reduceMotion ? 1600 : 2200
+            }
+            Connections {
+                target: table.game
+                function onAnnounce(text) {
+                    announcement.text = text
+                    announceAnim.restart()
+                }
             }
         }
     }

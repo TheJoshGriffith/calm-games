@@ -25,6 +25,12 @@ constexpr long long SlingPoints = 25;
 constexpr long long RolloverPoints = 250;
 constexpr long long RolloverSetPoints = 1000;
 constexpr int MaxMultiplier = 5;
+constexpr long long StarPoints = 500;
+constexpr long long DropPoints = 250;
+constexpr long long BankPoints = 1500;
+constexpr long long StagePoints = 2500; // times the stage just finished
+constexpr double DropThickness = 1.0;
+constexpr double BankResetSeconds = 1.5;
 
 // Closest point to p on segment ab.
 Vec2 closestPoint(Vec2 p, Vec2 a, Vec2 b)
@@ -111,6 +117,30 @@ void Table::build()
 
     m_restPosition = { (LaneLeft + LaneRight) / 2, LaneFloor - BallRadius };
 
+    // A bank of three drop targets above the flippers, close enough together
+    // that the ball can't slip between them while they stand.
+    for (double x : { 37.0, 47.0, 57.0 })
+        m_drops.push_back({ { x, 97 }, { x + 6, 97 } });
+
+    // Stars appear only on open felt, well clear of everything solid.
+    for (double y = 36; y <= 128; y += 4) {
+        for (double x = 16; x <= 84; x += 4) {
+            const Vec2 p { x, y };
+            bool clear = true;
+            for (const auto& w : m_walls)
+                clear = clear && (p - closestPoint(p, w.a, w.b)).length() > 5;
+            for (const auto& b : m_bumpers)
+                clear = clear && (p - b.centre).length() > b.radius + 6;
+            for (const auto& r : m_rollovers)
+                clear = clear && (p - r.centre).length() > r.radius + 5;
+            for (const auto& d : m_drops)
+                clear = clear && (p - closestPoint(p, d.a, d.b)).length() > 6;
+            if (clear)
+                m_starSpots.push_back(p);
+        }
+    }
+    m_stars.assign(StarSlots, {});
+
     // Outline of the whole table, for drawing the felt.
     constexpr double Foot = LaneFloor + 6;
     m_outline = { { leftTop.x, Foot } };
@@ -168,6 +198,9 @@ void Table::launch(double strength)
     m_charge = 0;
     m_ball.position = m_restPosition;
     m_ball.velocity = { 0, -speed };
+    // Each new ball gets one ball save, on its first launch.
+    m_saveTime = m_mode == Mode::Classic && m_freshBall ? BallSaveSeconds : 0;
+    m_freshBall = false;
     m_still = 0;
     record(EventType::Launch, 0, strength);
 }
@@ -179,16 +212,46 @@ void Table::placeBall(Vec2 position, Vec2 velocity)
     m_still = 0;
 }
 
-void Table::restore(long long score, int multiplier, int ballsLeft, int drained, unsigned litMask)
+void Table::restore(const Progress& p)
 {
-    m_score = std::max(0LL, score);
-    m_multiplier = std::clamp(multiplier, 1, MaxMultiplier);
-    m_ballsLeft = std::clamp(ballsLeft, 1, StartingBalls);
-    m_drained = std::max(0, drained);
+    m_score = std::max(0LL, p.score);
+    m_multiplier = std::clamp(p.multiplier, 1, MaxMultiplier);
+    m_ballsLeft = std::clamp(p.ballsLeft, 1, MaxBalls);
+    m_drained = std::max(0, p.drained);
     for (std::size_t i = 0; i < m_rollovers.size(); ++i)
-        m_rollovers[i].lit = (litMask >> i) & 1u;
+        m_rollovers[i].lit = (p.lit >> i) & 1u;
+    m_stage = std::max(1, p.stage);
+    m_stageStars = std::clamp(p.stageStars, 0, goalFor(m_stage).stars);
+    m_stageBank = p.stageBank;
     m_gameOver = false;
     returnToLane();
+}
+
+Progress Table::progress() const
+{
+    return { m_score, m_multiplier, m_ballsLeft, m_drained, litMask(), m_stage, m_stageStars, m_stageBank };
+}
+
+StageGoal Table::goalFor(int stage)
+{
+    return { std::min(2 + stage, 8), stage >= 2 };
+}
+
+void Table::spawnStar(int spot)
+{
+    if (spot < 0 || spot >= int(m_starSpots.size()))
+        return;
+    for (int slot = 0; slot < StarSlots; ++slot) {
+        auto& star = m_stars[slot];
+        if (star.active)
+            continue;
+        star.centre = m_starSpots[spot];
+        star.age = 0;
+        star.life = std::max(8.0, 15.0 - m_stage);
+        star.active = true;
+        record(EventType::StarAppeared, slot);
+        return;
+    }
 }
 
 unsigned Table::litMask() const
@@ -206,6 +269,12 @@ void Table::substep(double dt)
     for (double& c : m_cooldown)
         c = std::max(0.0, c - dt);
     m_wallSoundCooldown = std::max(0.0, m_wallSoundCooldown - dt);
+    if (m_bankReset > 0) {
+        m_bankReset -= dt;
+        if (m_bankReset <= 0)
+            for (auto& d : m_drops)
+                d.down = false;
+    }
 
     if (m_ready) {
         if (m_plungerHeld)
@@ -225,6 +294,9 @@ void Table::substep(double dt)
     collideWalls();
     collideBumpers();
     collideFlippers();
+    collideDropTargets();
+    updateStars(dt);
+    m_saveTime = std::max(0.0, m_saveTime - dt);
     checkSensors();
     if (m_ready)
         return;
@@ -352,6 +424,102 @@ void Table::collideFlippers()
     }
 }
 
+void Table::collideDropTargets()
+{
+    bool hit = false;
+    for (std::size_t i = 0; i < m_drops.size(); ++i) {
+        auto& d = m_drops[i];
+        if (d.down)
+            continue;
+        Vec2& p = m_ball.position;
+        Vec2& v = m_ball.velocity;
+        const Vec2 q = closestPoint(p, d.a, d.b);
+        const Vec2 dist = p - q;
+        const double len = dist.length();
+        const double reach = BallRadius + DropThickness;
+        if (len >= reach || len <= 1e-9)
+            continue;
+        const Vec2 n = dist * (1.0 / len);
+        p = q + n * reach;
+        const double vn = v.dot(n);
+        if (vn < 0)
+            v -= n * (1.5 * vn); // a soft, dead bounce
+        d.down = true;
+        hit = true;
+        addScore(DropPoints);
+        record(EventType::DropTarget, int(i), -vn);
+    }
+    if (hit && m_bankReset <= 0 && std::all_of(m_drops.begin(), m_drops.end(), [](const DropTarget& d) { return d.down; })) {
+        addScore(BankPoints);
+        m_bankReset = BankResetSeconds;
+        record(EventType::BankCleared);
+        if (!m_stageBank) {
+            m_stageBank = true;
+            checkStage();
+        }
+    }
+}
+
+void Table::updateStars(double dt)
+{
+    const int allowed = m_stage >= 5 ? 3 : m_stage >= 3 ? 2 : 1;
+    int active = 0;
+    for (int slot = 0; slot < StarSlots; ++slot) {
+        auto& star = m_stars[slot];
+        if (!star.active)
+            continue;
+        star.age += dt;
+        if ((m_ball.position - star.centre).length() < star.radius + 0.6 * BallRadius)
+            collectStar(slot);
+        else if (star.age >= star.life)
+            star.active = false;
+        else
+            ++active;
+    }
+
+    m_nextStar -= dt;
+    if (m_nextStar > 0 || active >= allowed || m_starSpots.empty())
+        return;
+    m_nextStar = 2.5 + m_rng.below(3000) / 1000.0;
+    // A random open spot, not right under the ball or another star.
+    for (int attempt = 0; attempt < 12; ++attempt) {
+        const int spot = int(m_rng.below(std::uint32_t(m_starSpots.size())));
+        const Vec2 p = m_starSpots[spot];
+        bool clear = (p - m_ball.position).length() > 14;
+        for (const auto& star : m_stars)
+            clear = clear && (!star.active || (p - star.centre).length() > 10);
+        if (clear) {
+            spawnStar(spot);
+            return;
+        }
+    }
+}
+
+void Table::collectStar(int slot)
+{
+    m_stars[slot].active = false;
+    addScore(StarPoints);
+    ++m_stageStars;
+    record(EventType::Star, slot, m_stageStars);
+    checkStage();
+}
+
+void Table::checkStage()
+{
+    const StageGoal g = goal();
+    if (m_stageStars < g.stars || (g.bank && !m_stageBank))
+        return;
+    addScore(StagePoints * m_stage);
+    ++m_stage;
+    m_stageStars = 0;
+    m_stageBank = false;
+    record(EventType::StageComplete, m_stage);
+    if (m_mode == Mode::Classic && m_ballsLeft < MaxBalls) {
+        ++m_ballsLeft;
+        record(EventType::ExtraBall, m_ballsLeft);
+    }
+}
+
 void Table::checkSensors()
 {
     const Vec2 p = m_ball.position;
@@ -387,7 +555,14 @@ void Table::checkSensors()
 
 void Table::drain()
 {
+    if (m_mode == Mode::Classic && m_saveTime > 0) {
+        m_saveTime = 0;
+        record(EventType::BallSaved);
+        returnToLane();
+        return;
+    }
     ++m_drained;
+    m_freshBall = true;
     m_multiplier = 1;
     for (auto& r : m_rollovers)
         r.lit = false;

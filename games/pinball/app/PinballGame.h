@@ -41,12 +41,21 @@ class PinballGame : public GameSession {
     Q_PROPERTY(qreal rightAngle READ rightAngle NOTIFY frame)
     Q_PROPERTY(qreal plungerCharge READ plungerCharge NOTIFY frame)
     Q_PROPERTY(bool ballReady READ ballReady NOTIFY frame)
+    Q_PROPERTY(QVariantList stars READ stars NOTIFY frame)        // [{active, x, y, r, fade}] per slot
+    Q_PROPERTY(QVariantList dropTargets READ dropTargets NOTIFY frame) // [{x1, y1, x2, y2, down}]
+    Q_PROPERTY(bool ballSave READ ballSave NOTIFY frame)
 
     Q_PROPERTY(qreal score READ score NOTIFY scoreChanged)
     Q_PROPERTY(int multiplier READ multiplier NOTIFY scoreChanged)
     Q_PROPERTY(int ballsLeft READ ballsLeft NOTIFY scoreChanged)
     Q_PROPERTY(bool endless READ endless NOTIFY scoreChanged)
     Q_PROPERTY(QVariantList lights READ lights NOTIFY scoreChanged)
+    // The stage goal: collect starsNeeded stars (and clear the bank if bankNeeded).
+    Q_PROPERTY(int stage READ stage NOTIFY scoreChanged)
+    Q_PROPERTY(int stageStars READ stageStars NOTIFY scoreChanged)
+    Q_PROPERTY(int starsNeeded READ starsNeeded NOTIFY scoreChanged)
+    Q_PROPERTY(bool bankNeeded READ bankNeeded NOTIFY scoreChanged)
+    Q_PROPERTY(bool bankDone READ bankDone NOTIFY scoreChanged)
     Q_PROPERTY(qreal best READ best NOTIFY bestChanged)
 
     // True while the table is on screen; physics only runs then.
@@ -76,12 +85,20 @@ public:
     qreal rightAngle() const;
     qreal plungerCharge() const { return m_table->plungerCharge(); }
     bool ballReady() const { return m_table->ballReady(); }
+    QVariantList stars() const;
+    QVariantList dropTargets() const;
+    bool ballSave() const { return m_table->ballSave() > 0; }
 
     qreal score() const { return qreal(m_table->score()); }
     int multiplier() const { return m_table->multiplier(); }
     int ballsLeft() const { return m_table->ballsLeft(); }
     bool endless() const { return m_table->mode() == pinball::Mode::Endless; }
     QVariantList lights() const;
+    int stage() const { return m_table->stage(); }
+    int stageStars() const { return m_table->stageStars(); }
+    int starsNeeded() const { return m_table->goal().stars; }
+    bool bankNeeded() const { return m_table->goal().bank; }
+    bool bankDone() const { return m_table->stageBank(); }
     qreal best() const;
     Q_INVOKABLE qreal bestFor(const QString& level) const;
 
@@ -103,6 +120,9 @@ signals:
     void slingshotHit(int index);
     void flipped(int side);
     void ballDrained();
+    void starCollected(int slot);
+    // A short message for the table: "Stage 2", "Ball saved"...
+    void announce(const QString& text);
 
 protected:
     void createGame(const QString& level) override;

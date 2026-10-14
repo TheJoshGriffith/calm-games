@@ -57,6 +57,41 @@ struct Rollover {
     bool lit = false;
 };
 
+// A star: a target that appears somewhere on the table, waits a while, then
+// fades. The ball collects it by rolling through it.
+struct Star {
+    Vec2 centre;
+    double radius = 3.6;
+    double age = 0;      // seconds since it appeared
+    double life = 14;    // seconds before it fades away
+    bool active = false;
+};
+
+// One of the drop targets in the bank above the flippers.
+struct DropTarget {
+    Vec2 a;
+    Vec2 b;
+    bool down = false;
+};
+
+// What the player needs to finish the current stage.
+struct StageGoal {
+    int stars = 3;     // stars to collect
+    bool bank = false; // whether the drop-target bank must be cleared
+};
+
+// Everything that carries over a save and resume.
+struct Progress {
+    long long score = 0;
+    int multiplier = 1;
+    int ballsLeft = 3;
+    int drained = 0;
+    unsigned lit = 0; // rollover lanes lit, one bit each
+    int stage = 1;
+    int stageStars = 0;
+    bool stageBank = false;
+};
+
 struct Flipper {
     Vec2 pivot;
     double length = 17;
@@ -85,6 +120,13 @@ enum class EventType {
     Wall,        // a firm knock against a wall
     Drain,
     GameOver,
+    Star,          // a star was collected; index = slot, strength = stars this stage
+    StarAppeared,  // index = slot
+    DropTarget,    // index = target
+    BankCleared,   // all three drop targets down
+    StageComplete, // index = the new stage
+    ExtraBall,     // Classic: a stage won an extra ball
+    BallSaved,     // drained during the grace period after a launch
 };
 
 struct Event {
@@ -120,11 +162,22 @@ public:
     int multiplier() const { return m_multiplier; }
     int ballsLeft() const { return m_ballsLeft; } // including the ball in play
     int drained() const { return m_drained; }
+    int stage() const { return m_stage; }
+    int stageStars() const { return m_stageStars; }
+    bool stageBank() const { return m_stageBank; }
+    StageGoal goal() const { return goalFor(m_stage); }
+    static StageGoal goalFor(int stage);
+    // Seconds of ball save left after the latest launch (Classic only).
+    double ballSave() const { return m_saveTime; }
 
     const std::vector<Wall>& walls() const { return m_walls; }
     const std::vector<Bumper>& bumpers() const { return m_bumpers; }
     const std::vector<Rollover>& rollovers() const { return m_rollovers; }
     const std::array<Flipper, 2>& flippers() const { return m_flippers; }
+    const std::vector<Star>& stars() const { return m_stars; }
+    const std::vector<DropTarget>& dropTargets() const { return m_drops; }
+    // Where stars may appear: open spots clear of every wall and bumper.
+    const std::vector<Vec2>& starSpots() const { return m_starSpots; }
     // Slingshot outlines (triangles), for drawing.
     const std::vector<std::array<Vec2, 3>>& slingshots() const { return m_slingshots; }
     Vec2 restPosition() const { return m_restPosition; }
@@ -134,16 +187,21 @@ public:
     const std::vector<std::vector<Vec2>>& aprons() const { return m_aprons; }
     double laneLeft() const { return LaneLeft; }
 
-    // Restores a saved game (score etc.); the ball returns to the launch lane.
-    void restore(long long score, int multiplier, int ballsLeft, int drained, unsigned litMask);
+    // Restores a saved game; the ball returns to the launch lane.
+    void restore(const Progress& progress);
+    Progress progress() const;
     unsigned litMask() const;
 
     // Testing hooks.
     void placeBall(Vec2 position, Vec2 velocity);
+    void spawnStar(int spot); // index into starSpots()
     void launch(double strength); // 0..1, as if the plunger was released
     double gravity() const { return m_gravity; }
     static constexpr double SubStep = 1.0 / 480.0;
     static constexpr int StartingBalls = 3;
+    static constexpr int MaxBalls = 5;
+    static constexpr int StarSlots = 3;
+    static constexpr double BallSaveSeconds = 6;
 
 private:
     static constexpr double LaneLeft = 89;
@@ -156,6 +214,10 @@ private:
     void collideBumpers();
     void collideFlippers();
     void checkSensors();
+    void collideDropTargets();
+    void updateStars(double dt);
+    void collectStar(int slot);
+    void checkStage();
     void drain();
     void returnToLane();
     void addScore(long long points);
@@ -180,6 +242,13 @@ private:
     double m_charge = 0;
     double m_accumulator = 0;
     double m_still = 0; // seconds the ball has been nearly motionless
+    std::vector<Star> m_stars;
+    std::vector<Vec2> m_starSpots;
+    double m_nextStar = 1.5;
+    std::vector<DropTarget> m_drops;
+    double m_bankReset = -1; // seconds until a cleared bank stands back up
+    double m_saveTime = 0;
+    bool m_freshBall = true; // the next launch earns a ball save
     std::vector<bool> m_insideRollover;
     std::vector<double> m_cooldown; // per bumper/slingshot, to debounce events
     double m_wallSoundCooldown = 0;
@@ -188,6 +257,9 @@ private:
     int m_multiplier = 1;
     int m_ballsLeft = StartingBalls;
     int m_drained = 0;
+    int m_stage = 1;
+    int m_stageStars = 0;
+    bool m_stageBank = false;
     bool m_gameOver = false;
     std::vector<Event> m_events;
 };

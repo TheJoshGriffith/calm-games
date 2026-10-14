@@ -2,6 +2,7 @@
 
 #include <QRandomGenerator>
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -120,6 +121,33 @@ qreal PinballGame::rightAngle() const
     return degrees(m_table->flippers()[1].angle);
 }
 
+QVariantList PinballGame::stars() const
+{
+    QVariantList out;
+    for (const auto& star : m_table->stars()) {
+        QVariantMap m = point(star.centre);
+        m.insert(QStringLiteral("active"), star.active);
+        m.insert(QStringLiteral("r"), star.radius);
+        // 0 while fresh, rising to 1 over the last few seconds of its life.
+        m.insert(QStringLiteral("fade"), std::clamp((star.age - (star.life - 4.0)) / 4.0, 0.0, 1.0));
+        out.append(m);
+    }
+    return out;
+}
+
+QVariantList PinballGame::dropTargets() const
+{
+    QVariantList out;
+    for (const auto& d : m_table->dropTargets()) {
+        out.append(QVariantMap {
+            { QStringLiteral("x1"), d.a.x }, { QStringLiteral("y1"), d.a.y },
+            { QStringLiteral("x2"), d.b.x }, { QStringLiteral("y2"), d.b.y },
+            { QStringLiteral("down"), d.down },
+        });
+    }
+    return out;
+}
+
 QVariantList PinballGame::lights() const
 {
     QVariantList out;
@@ -194,13 +222,17 @@ void PinballGame::createGame(const QString& level)
 
 QVariantMap PinballGame::saveState() const
 {
+    const pinball::Progress p = m_table->progress();
     return {
         { QStringLiteral("mode"), endless() ? QStringLiteral("endless") : QStringLiteral("classic") },
-        { QStringLiteral("score"), qreal(m_table->score()) },
-        { QStringLiteral("multiplier"), m_table->multiplier() },
-        { QStringLiteral("ballsLeft"), m_table->ballsLeft() },
-        { QStringLiteral("drained"), m_table->drained() },
-        { QStringLiteral("lit"), m_table->litMask() },
+        { QStringLiteral("score"), qreal(p.score) },
+        { QStringLiteral("multiplier"), p.multiplier },
+        { QStringLiteral("ballsLeft"), p.ballsLeft },
+        { QStringLiteral("drained"), p.drained },
+        { QStringLiteral("lit"), p.lit },
+        { QStringLiteral("stage"), p.stage },
+        { QStringLiteral("stageStars"), p.stageStars },
+        { QStringLiteral("stageBank"), p.stageBank },
     };
 }
 
@@ -211,11 +243,16 @@ bool PinballGame::restoreState(const QVariantMap& state)
         return false;
     m_table = std::make_unique<pinball::Table>(mode == QLatin1String("endless") ? Mode::Endless : Mode::Classic,
         QRandomGenerator::global()->generate64());
-    m_table->restore(qint64(state.value(QStringLiteral("score")).toDouble()),
-        state.value(QStringLiteral("multiplier"), 1).toInt(),
-        state.value(QStringLiteral("ballsLeft"), pinball::Table::StartingBalls).toInt(),
-        state.value(QStringLiteral("drained")).toInt(),
-        state.value(QStringLiteral("lit")).toUInt());
+    pinball::Progress p;
+    p.score = qint64(state.value(QStringLiteral("score")).toDouble());
+    p.multiplier = state.value(QStringLiteral("multiplier"), 1).toInt();
+    p.ballsLeft = state.value(QStringLiteral("ballsLeft"), pinball::Table::StartingBalls).toInt();
+    p.drained = state.value(QStringLiteral("drained")).toInt();
+    p.lit = state.value(QStringLiteral("lit")).toUInt();
+    p.stage = state.value(QStringLiteral("stage"), 1).toInt();
+    p.stageStars = state.value(QStringLiteral("stageStars")).toInt();
+    p.stageBank = state.value(QStringLiteral("stageBank")).toBool();
+    m_table->restore(p);
     m_lastScore = m_table->score();
     emit scoreChanged();
     emit bestChanged();
@@ -277,6 +314,34 @@ void PinballGame::handleEvents()
         case EventType::GameOver:
             updateBest();
             finishGame();
+            break;
+        case EventType::StarAppeared:
+            break; // stars arrive quietly
+        case EventType::Star:
+            emit starCollected(e.index);
+            // Each star this stage chimes a step higher.
+            emitFeedback(QStringLiteral("complete"), int(e.strength) - 1);
+            break;
+        case EventType::DropTarget:
+            emitFeedback(QStringLiteral("tap"));
+            break;
+        case EventType::BankCleared:
+            emit announce(tr("Bank cleared"));
+            emitFeedback(QStringLiteral("soft"));
+            break;
+        case EventType::StageComplete:
+            emit announce(tr("Stage %1").arg(e.index));
+            emitFeedback(QStringLiteral("win"));
+            // Autosave each stage reached.
+            beginMove();
+            endMove();
+            break;
+        case EventType::ExtraBall:
+            emit announce(tr("Extra ball"));
+            break;
+        case EventType::BallSaved:
+            emit announce(tr("Ball saved"));
+            emitFeedback(QStringLiteral("soft"));
             break;
         }
     }
