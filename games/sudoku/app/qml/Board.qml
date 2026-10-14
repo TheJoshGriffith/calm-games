@@ -611,7 +611,11 @@ Item {
                 Rectangle {
                     anchors.fill: parent
                     radius: width / 2
-                    color: mark.modelData.kind === "black" ? Theme.ink : Theme.surface
+                    // White and black as the rules name them, in either theme;
+                    // an XV letter sits on a plain patch.
+                    color: mark.letter ? Theme.surface
+                         : mark.modelData.kind === "black" ? (Theme.dark ? Theme.knob : Theme.ink)
+                         : (Theme.dark ? Theme.ink : Theme.surface)
                     border.color: mark.letter ? "transparent" : Theme.ink
                     border.width: mark.letter ? 0 : 1.4
                 }

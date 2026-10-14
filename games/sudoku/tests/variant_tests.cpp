@@ -355,7 +355,7 @@ const char* kGolden[] = {
     "c07c02ed5f08ff15", // Jigsaw
     "4f793a1459b31c9f", // Killer
     "e64b7f7b2f3d5744", // Thermo
-    "ba716474b8c230fa", // Arrow
+    "9e66b0415eb645a5", // Arrow
     "373db3680fd0e9a9", // Sandwich
     "10061aa2870d3f1e", // Kropki
     "2360e0d96290d808", // XV

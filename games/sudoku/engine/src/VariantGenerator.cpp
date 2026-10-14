@@ -243,14 +243,23 @@ std::vector<ArrowClue> arrowClues(calm::Rng& rng, Canvas& canvas, const Grid& so
         const int length = randomIn(rng, 2, std::min(3, target - 1));
         // Random depth-first search for a path of `length` cells summing to target.
         std::vector<int> path;
-        std::vector<int> best;
+        // Each step heads further from the circle, so arrows point outwards
+        // instead of curling back round it.
+        auto reach = [circle](int cell) { return std::max(std::abs(rowOf(cell) - rowOf(circle)), std::abs(colOf(cell) - colOf(circle))); };
         auto dfs = [&](auto&& self, int from, int sum) -> bool {
             if (static_cast<int>(path.size()) == length)
                 return sum == target;
             auto options = kingNeighbours(from);
             rng.shuffle(options.begin(), options.end());
             for (int n : options) {
-                if (canvas.used[n] || n == circle || std::find(path.begin(), path.end(), n) != path.end() || !canvas.canStep(from, n))
+                if (canvas.used[n] || n == circle || reach(n) <= reach(from) || !canvas.canStep(from, n))
+                    continue;
+                // The new step must not cross the arrow's own earlier steps.
+                Canvas own = canvas;
+                std::vector<int> drawn { circle };
+                drawn.insert(drawn.end(), path.begin(), path.end());
+                own.claim(drawn);
+                if (!own.canStep(from, n))
                     continue;
                 if (sum + solution[n] + (length - 1 - static_cast<int>(path.size())) > target)
                     continue;
