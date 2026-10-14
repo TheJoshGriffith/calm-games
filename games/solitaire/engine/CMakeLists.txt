@@ -1,6 +1,6 @@
-# Pure C++ Klondike rules, solver and deal generator: no Qt dependency.
+# Pure C++ rules for every Solitaire variant, solver and deal generator: no Qt dependency.
 add_library(solitaire_engine STATIC
-    src/Klondike.cpp
+    src/Game.cpp
     src/Solver.cpp
 )
 add_library(Solitaire::Engine ALIAS solitaire_engine)

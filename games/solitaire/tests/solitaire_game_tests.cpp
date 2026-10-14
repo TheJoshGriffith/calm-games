@@ -3,6 +3,7 @@
 #include "SolitaireGame.h"
 #include "SaveStore.h"
 
+#include <QSet>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTest>
@@ -22,11 +23,11 @@ private:
         return game.cards().at(id).toMap();
     }
 
-    // Resumes a game from a hand-made table (Klondike::serialize format).
-    static void resumeTable(SolitaireGame& game, const QString& table)
+    // Resumes a game from a hand-made table (Game::serialize format).
+    static void resumeTable(SolitaireGame& game, const QString& table, const QString& level = QStringLiteral("Klondike"))
     {
         QVariantMap saved;
-        saved.insert(QStringLiteral("level"), QStringLiteral("Draw one"));
+        saved.insert(QStringLiteral("level"), level);
         saved.insert(QStringLiteral("elapsed"), 30);
         saved.insert(QStringLiteral("game"), QVariantMap { { QStringLiteral("table"), table } });
         QVERIFY(SaveStore::save(game.gameId(), saved));
@@ -99,6 +100,83 @@ private slots:
 
         startAndWait(game, QStringLiteral("Draw three"));
         QCOMPARE(game.drawCount(), 3);
+    }
+
+    void everyGameDeals()
+    {
+        const QStringList levels = { QStringLiteral("Klondike"), QStringLiteral("Klondike · Draw three"),
+            QStringLiteral("FreeCell"), QStringLiteral("Spider · One suit"), QStringLiteral("Spider · Two suits"),
+            QStringLiteral("Spider · Four suits"), QStringLiteral("Yukon"), QStringLiteral("Pyramid"),
+            QStringLiteral("TriPeaks"), QStringLiteral("Golf") };
+        const QStringList variants = { QStringLiteral("klondike"), QStringLiteral("klondike"), QStringLiteral("freecell"),
+            QStringLiteral("spider"), QStringLiteral("spider"), QStringLiteral("spider"), QStringLiteral("yukon"),
+            QStringLiteral("pyramid"), QStringLiteral("tripeaks"), QStringLiteral("golf") };
+        SolitaireGame game;
+        for (int i = 0; i < levels.size(); ++i) {
+            startAndWait(game, levels[i]);
+            QCOMPARE(game.level(), levels[i]);
+            QCOMPARE(game.variant(), variants[i]);
+            QCOMPARE(SolitaireGame::levelFor(variants[i], i == 1 ? 3 : i == 4 ? 2 : i == 5 ? 4 : 1), levels[i]);
+            const QVariantList cards = game.cards();
+            QCOMPARE(cards.size(), variants[i] == QLatin1String("spider") ? 104 : 52);
+            for (const QVariant& c : cards)
+                QVERIFY(c.toMap().contains(QStringLiteral("pile")));
+            // Every card's pile has a place on the table.
+            QSet<QString> places;
+            for (const QVariant& p : game.piles()) {
+                const QVariantMap m = p.toMap();
+                places.insert(m.value(QStringLiteral("pile")).toString() + u':' + m.value(QStringLiteral("slot")).toString());
+            }
+            for (const QVariant& c : cards) {
+                const QVariantMap m = c.toMap();
+                QVERIFY(places.contains(m.value(QStringLiteral("pile")).toString() + u':' + m.value(QStringLiteral("slot")).toString()));
+            }
+            QVERIFY(game.showHint());
+        }
+    }
+
+    void pyramidPairsByTapping()
+    {
+        // Waste 5H; the pyramid's bottom row ends 8D, and a king sits in it.
+        SolitaireGame game;
+        resumeTable(game, QStringLiteral(
+            "P|0|AhKh5d6d7d9dTdJdQdKdAc2c3c4c5c6c7c8c9cTcJcQcKc|5H||2H|3H|4H|6H|7H|8H|9H|TH|JH|QH|AS|2S|3S|4S|5S|6S|7S|8S|9S|TS|JS|QS|KS|AD|2D|3D|4D|8D"),
+            QStringLiteral("Pyramid"));
+        QVERIFY(game.active());
+        QVERIFY(game.tapToPlay());
+        const int eight = cardAt(game, SolitaireGame::Tableau, 27, 0);
+        const int five = cardAt(game, SolitaireGame::Waste, 0, 0);
+        QVERIFY(eight >= 0 && five >= 0);
+        // A covered card can't be picked.
+        QVERIFY(!game.tapCard(cardAt(game, SolitaireGame::Tableau, 20, 0)));
+        QVERIFY(game.tapCard(eight));
+        QCOMPARE(game.selectedCard(), eight);
+        QVERIFY(game.tapCard(five));
+        QCOMPARE(game.selectedCard(), -1);
+        QCOMPARE(game.progress(), 1);
+        QCOMPARE(card(game, eight).value(QStringLiteral("pile")).toInt(), int(SolitaireGame::Foundation));
+        // A king goes on its own.
+        QVERIFY(game.tapCard(cardAt(game, SolitaireGame::Tableau, 22, 0)));
+        QCOMPARE(game.progress(), 2);
+        game.undo();
+        QCOMPARE(game.progress(), 1);
+    }
+
+    void golfPlaysByTapping()
+    {
+        // Waste QH; jack and king of spades on top of two columns.
+        SolitaireGame game;
+        resumeTable(game, QStringLiteral(
+            "G|0|As2s3s4s5s6s7s8s9sTsQsAh2h3h4h5h6h7h8h9hThJhKhAd2d3d4d5d6d7d8d9dTdJdQdKdAc2c3c4c5c6c7c8c9cTcJcQcKc|QH||||||KS|JS"),
+            QStringLiteral("Golf"));
+        QVERIFY(game.active());
+        QSignalSpy feedback(&game, &GameSession::feedback);
+        QVERIFY(game.tapCard(cardAt(game, SolitaireGame::Tableau, 6, 0)));
+        QCOMPARE(feedback.last().at(0).toString(), QStringLiteral("complete"));
+        QCOMPARE(game.wasteCount(), 2);
+        // The king is two ranks from the jack now on the waste.
+        QVERIFY(!game.tapCard(cardAt(game, SolitaireGame::Tableau, 5, 0)));
+        QCOMPARE(feedback.last().at(0).toString(), QStringLiteral("error"));
     }
 
     void drawUndoAndRedo()
