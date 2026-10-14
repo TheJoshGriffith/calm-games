@@ -1,0 +1,11 @@
+add_executable(mahjong_engine_tests engine_tests.cpp)
+target_link_libraries(mahjong_engine_tests PRIVATE Mahjong::Engine)
+add_test(NAME mahjong_engine_tests COMMAND mahjong_engine_tests)
+
+if(CALM_BUILD_APPS)
+    add_executable(mahjong_game_tests mahjong_game_tests.cpp ../app/MahjongGame.h ../app/MahjongGame.cpp)
+    target_include_directories(mahjong_game_tests PRIVATE ../app)
+    target_link_libraries(mahjong_game_tests PRIVATE Mahjong::Engine calm_framework Qt6::Test)
+    add_test(NAME mahjong_game_tests COMMAND mahjong_game_tests)
+    set_tests_properties(mahjong_game_tests PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
