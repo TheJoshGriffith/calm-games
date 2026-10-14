@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["@APPLE_TEAM_ID@.com.thejoshgriffith.calm.mahjong"],
+        "components": [{ "/": "/s/*", "comment": "Share links open the deal in the app" }]
+      }
+    ]
+  }
+}
