@@ -177,7 +177,8 @@ CalmPage {
     CalmText {
         anchors.centerIn: parent
         visible: page.game.loading
-        text: page.game.winnableDeals ? qsTr("Shuffling a winnable deal…") : qsTr("Shuffling…")
+        text: page.game.winnableDeals && !page.game.level.startsWith("Spider")
+              ? qsTr("Shuffling a winnable deal…") : qsTr("Shuffling…")
         color: Theme.muted
     }
 

@@ -33,9 +33,14 @@ if(NOT DEFINED QT_FEATURE_thread OR QT_FEATURE_thread)
 endif()
 
 if(CALM_BUILD_TESTS)
-    add_test(NAME solitaire_app_smoke COMMAND CalmSolitaire --play "Draw one")
-    set_tests_properties(solitaire_app_smoke PROPERTIES
-        ENVIRONMENT "CALM_SMOKE_TEST=1;QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+    # One run per game, so every table layout is checked for QML warnings.
+    set(levels "Klondike" "Klondike · Draw three" "FreeCell" "Spider · Two suits" "Yukon" "Pyramid" "TriPeaks" "Golf")
+    set(names klondike klondike3 freecell spider yukon pyramid tripeaks golf)
+    foreach(level name IN ZIP_LISTS levels names)
+        add_test(NAME solitaire_app_smoke_${name} COMMAND CalmSolitaire --play "${level}")
+        set_tests_properties(solitaire_app_smoke_${name} PROPERTIES
+            ENVIRONMENT "CALM_SMOKE_TEST=1;QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+    endforeach()
 endif()
 
 if(IOS)
