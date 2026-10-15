@@ -7,6 +7,10 @@
 namespace {
 const QString kBase = QStringLiteral("qrc:/qt/qml/Calm/sounds/");
 constexpr qint64 kCooldownMs = 45;
+// Everyday sounds (tap, soft, erase) start at least this far apart, so
+// bursts from different sources never pile up into crackle. Completions,
+// errors and the win always play: they often land with a tap.
+constexpr qint64 kGlobalGapMs = 60;
 
 struct ThemeInfo {
     const char* id;
@@ -110,18 +114,29 @@ void SoundBank::play(const QString& event, int step)
         return;
 
     const qint64 now = m_clock.elapsed();
-    if (now - it->lastPlayed < kCooldownMs)
+    const bool everyday = event == QLatin1String("tap") || event == QLatin1String("soft")
+                          || event == QLatin1String("erase");
+    if (now - it->lastPlayed < kCooldownMs || (everyday && now - m_lastAny < kGlobalGapMs))
         return;
-    it->lastPlayed = now;
 
-    QSoundEffect* effect;
+    QSoundEffect* effect = nullptr;
     if (event == QLatin1String("complete")) {
         // Successive completions climb the pentatonic scale.
         effect = it->variants.at(qBound(0, step, int(it->variants.size()) - 1));
     } else {
-        effect = it->variants.at(it->next);
-        it->next = (it->next + 1) % it->variants.size();
+        // Restarting a sample mid-play clicks, so take the next variant that
+        // has finished, or stay quiet if they're all still sounding.
+        for (qsizetype tried = 0; tried < it->variants.size() && !effect; ++tried) {
+            QSoundEffect* candidate = it->variants.at(it->next);
+            it->next = (it->next + 1) % it->variants.size();
+            if (!candidate->isPlaying())
+                effect = candidate;
+        }
+        if (!effect)
+            return;
     }
+    it->lastPlayed = now;
+    m_lastAny = now;
 
     const qreal jitter = 0.9 + 0.2 * QRandomGenerator::global()->generateDouble();
     playEffect(effect, it->gain * jitter);
