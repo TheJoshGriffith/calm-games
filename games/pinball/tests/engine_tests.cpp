@@ -140,6 +140,31 @@ void raisedFlipperCradlesTheBall()
     CHECK(t.drained() == 1);
 }
 
+// A ball dropped anywhere round a resting flipper's hinge rolls on down
+// within a second or so; it never sits on the pivot or in a notch beside it.
+void nothingRestsOnTheHinges()
+{
+    for (const Vec2 pivot : { Vec2 { 30, 148 }, Vec2 { 70, 148 } }) {
+        const double outward = pivot.x < 50 ? 1 : -1;
+        for (double dx = -8; dx <= 8; dx += 1) {
+            for (double dy = -14; dy <= 0; dy += 1) {
+                for (double vx : { -40.0, -20.0, 0.0, 20.0, 40.0 }) {
+                    Table t(Mode::Endless);
+                    t.placeBall({ pivot.x + outward * dx, pivot.y + dy }, { outward * vx, 0 });
+                    double near = 0;
+                    bool stuck = false;
+                    for (int i = 0; i < 60 * 4 && !t.ballReady(); ++i) {
+                        t.step(Frame);
+                        near = (t.ball().position - pivot).length() < 7 ? near + Frame : 0;
+                        stuck = stuck || near > 1.5;
+                    }
+                    CHECK(!stuck);
+                }
+            }
+        }
+    }
+}
+
 void bumperScoresAndKicks()
 {
     Table t(Mode::Endless);
@@ -456,6 +481,7 @@ int main()
         { "unattendedBallDrains", unattendedBallDrains },
         { "flipperSendsTheBallUpTheTable", flipperSendsTheBallUpTheTable },
         { "raisedFlipperCradlesTheBall", raisedFlipperCradlesTheBall },
+        { "nothingRestsOnTheHinges", nothingRestsOnTheHinges },
         { "bumperScoresAndKicks", bumperScoresAndKicks },
         { "rolloversLightAndRaiseTheMultiplier", rolloversLightAndRaiseTheMultiplier },
         { "classicEndsAfterThreeBalls", classicEndsAfterThreeBalls },

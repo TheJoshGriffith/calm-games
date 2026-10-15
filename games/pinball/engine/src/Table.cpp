@@ -41,6 +41,19 @@ Vec2 closestPoint(Vec2 p, Vec2 a, Vec2 b)
     return a + ab * t;
 }
 
+// Where a line from `from` touches the circle (centre, radius), on the side
+// facing `side` (+1 or -1). Inlanes end there so they run smoothly onto the
+// flipper's round hinge instead of meeting it in a notch.
+Vec2 tangentPoint(Vec2 from, Vec2 centre, double radius, double side)
+{
+    const Vec2 d = from - centre;
+    const double dist = d.length();
+    const Vec2 u = d * (1.0 / dist);
+    const Vec2 w { -u.y * side, u.x * side };
+    const double c = radius / dist;
+    return centre + (u * c + w * std::sqrt(1 - c * c)) * radius;
+}
+
 } // namespace
 
 Table::Table(Mode mode, std::uint64_t seed)
@@ -75,10 +88,13 @@ void Table::build()
     const Vec2 rightBottom { 89, 124 };
     const Vec2 leftPivot { 30, 148 }, rightPivot { 70, 148 };
     const Vec2 leftSlopeEnd { 28.4, 146.6 }, rightSlopeEnd { 71.6, 146.6 };
+    const double hinge = Flipper {}.radius;
+    const Vec2 leftInlaneEnd = tangentPoint(leftBottom, leftPivot, hinge, 1);
+    const Vec2 rightInlaneEnd = tangentPoint(rightBottom, rightPivot, hinge, -1);
 
     wall(leftTop, leftBottom);
-    wall(leftBottom, leftSlopeEnd, 0.3);
-    wall(rightBottom, rightSlopeEnd, 0.3);
+    wall(leftBottom, leftInlaneEnd, 0.3);
+    wall(rightBottom, rightInlaneEnd, 0.3);
     // Under the flippers, so a ball that slips past drains straight down.
     m_walls.push_back({ leftSlopeEnd, { leftSlopeEnd.x, TableHeight + 10 }, 0.2, 0, false, -1, false });
     m_walls.push_back({ rightSlopeEnd, { rightSlopeEnd.x, TableHeight + 10 }, 0.2, 0, false, -1, false });
@@ -147,8 +163,8 @@ void Table::build()
     m_outline.insert(m_outline.end(), arch.begin(), arch.end());
     m_outline.push_back({ LaneRight, Foot });
     m_aprons = {
-        { leftBottom, leftSlopeEnd, { leftSlopeEnd.x, Foot }, { leftTop.x, Foot } },
-        { rightBottom, rightSlopeEnd, { rightSlopeEnd.x, Foot }, { LaneLeft, Foot } },
+        { leftBottom, leftInlaneEnd, leftSlopeEnd, { leftSlopeEnd.x, Foot }, { leftTop.x, Foot } },
+        { rightBottom, rightInlaneEnd, rightSlopeEnd, { rightSlopeEnd.x, Foot }, { LaneLeft, Foot } },
     };
 }
 
