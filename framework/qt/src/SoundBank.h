@@ -64,6 +64,7 @@ private:
 
     QHash<QString, Event> m_events;
     QElapsedTimer m_clock;
+    qint64 m_lastAny = -1000;
     bool m_enabled = true;
     qreal m_volume = 0.7;
     QString m_theme = themeIds().constFirst();

@@ -19,7 +19,9 @@ using solitaire::Variant;
 namespace {
 
 // Interval between cards when finishing automatically.
-constexpr int FinishStepMs = 110;
+// Slow enough that each card lands and its sound ends before the next
+// leaves, so the finish plays as a calm cascade instead of a clatter.
+constexpr int FinishStepMs = 260;
 
 struct Level {
     const char* name;
