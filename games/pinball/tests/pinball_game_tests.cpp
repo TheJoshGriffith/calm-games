@@ -167,22 +167,34 @@ private slots:
     void physicsRunsOnlyOnTable()
     {
         PinballGame game;
+        QSignalSpy running(&game, &PinballGame::runningChanged);
         game.startNewGame(QStringLiteral("Gentle"));
-        game.setPlunger(true);
-        game.setPlunger(false);
-        const double y = game.ballY();
-        QTest::qWait(100);
-        QCOMPARE(game.ballY(), y); // not on screen yet
+        QVERIFY(!game.running()); // not on screen yet
 
         game.setOnTable(true);
+        QVERIFY(game.running());
         QVERIFY(!game.paused());
-        QTRY_VERIFY(game.ballY() < y - 5);
 
         game.setOnTable(false);
+        QVERIFY(!game.running());
         QVERIFY(game.paused());
-        const double frozen = game.ballY();
-        QTest::qWait(100);
-        QCOMPARE(game.ballY(), frozen);
+        QCOMPARE(running.count(), 2);
+    }
+
+    void partsNotifyOnlyWhenTheyChange()
+    {
+        PinballGame game;
+        game.startNewGame(QStringLiteral("Classic"));
+        QSignalSpy stars(&game, &PinballGame::starsChanged);
+        QSignalSpy drops(&game, &PinballGame::dropTargetsChanged);
+        QSignalSpy frames(&game, &PinballGame::frame);
+        game.setPlunger(true);
+        game.setPlunger(false);
+        for (int i = 0; i < 120; ++i)
+            game.advance(1.0 / 60);
+        QCOMPARE(frames.count(), 120);
+        QVERIFY(stars.count() < 10);
+        QVERIFY(drops.count() < 10);
     }
 };
 

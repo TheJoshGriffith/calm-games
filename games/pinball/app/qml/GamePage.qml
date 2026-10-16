@@ -21,6 +21,13 @@ CalmPage {
         value: page.visible && Qt.application.state === Qt.ApplicationActive
     }
 
+    // Step the table in time with the display, so the ball moves the same
+    // distance every frame instead of beating against a separate timer.
+    FrameAnimation {
+        running: page.game.running
+        onTriggered: page.game.advance(frameTime)
+    }
+
     actions: IconButton {
         iconPath: Icons.settings
         text: qsTr("Settings")

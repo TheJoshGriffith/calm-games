@@ -4,16 +4,14 @@
 
 #include <pinball/Table.h>
 
-#include <QElapsedTimer>
 #include <QQmlEngine>
 #include <QSettings>
-#include <QTimer>
 #include <QVariantList>
 
 #include <memory>
 
-// The pinball game session: steps the table's physics on a frame timer while
-// the table is on screen, and turns table events into score, saves and the
+// The pinball game session: steps the table's physics once per displayed
+// frame while the table is on screen (the page drives advance()), and turns table events into score, saves and the
 // framework's shared sounds and haptics.
 //
 // Levels: "Gentle" (endless balls, softer gravity) and "Classic" (three balls).
@@ -41,9 +39,10 @@ class PinballGame : public GameSession {
     Q_PROPERTY(qreal rightAngle READ rightAngle NOTIFY frame)
     Q_PROPERTY(qreal plungerCharge READ plungerCharge NOTIFY frame)
     Q_PROPERTY(bool ballReady READ ballReady NOTIFY frame)
-    Q_PROPERTY(QVariantList stars READ stars NOTIFY frame)        // [{active, x, y, r, fade}] per slot
-    Q_PROPERTY(QVariantList dropTargets READ dropTargets NOTIFY frame) // [{x1, y1, x2, y2, down}]
-    Q_PROPERTY(bool ballSave READ ballSave NOTIFY frame)
+    // These change rarely, so they notify only when they do.
+    Q_PROPERTY(QVariantList stars READ stars NOTIFY starsChanged)        // [{active, x, y, r, fade}] per slot
+    Q_PROPERTY(QVariantList dropTargets READ dropTargets NOTIFY dropTargetsChanged) // [{x1, y1, x2, y2, down}]
+    Q_PROPERTY(bool ballSave READ ballSave NOTIFY ballSaveChanged)
 
     Q_PROPERTY(qreal score READ score NOTIFY scoreChanged)
     Q_PROPERTY(int multiplier READ multiplier NOTIFY scoreChanged)
@@ -60,6 +59,8 @@ class PinballGame : public GameSession {
 
     // True while the table is on screen; physics only runs then.
     Q_PROPERTY(bool onTable READ onTable WRITE setOnTable NOTIFY onTableChanged)
+    // True while the page should call advance() every frame.
+    Q_PROPERTY(bool running READ running NOTIFY runningChanged)
 
 public:
     explicit PinballGame(QObject* parent = nullptr);
@@ -85,9 +86,9 @@ public:
     qreal rightAngle() const;
     qreal plungerCharge() const { return m_table->plungerCharge(); }
     bool ballReady() const { return m_table->ballReady(); }
-    QVariantList stars() const;
-    QVariantList dropTargets() const;
-    bool ballSave() const { return m_table->ballSave() > 0; }
+    QVariantList stars() const { return m_stars; }
+    QVariantList dropTargets() const { return m_dropTargets; }
+    bool ballSave() const { return m_ballSave; }
 
     qreal score() const { return qreal(m_table->score()); }
     int multiplier() const { return m_table->multiplier(); }
@@ -104,11 +105,12 @@ public:
 
     bool onTable() const { return m_onTable; }
     void setOnTable(bool on);
+    bool running() const { return m_running; }
 
     // side: 0 = left, 1 = right.
     Q_INVOKABLE void setFlipper(int side, bool pressed);
     Q_INVOKABLE void setPlunger(bool held);
-    // Advances the table by `seconds`; the frame timer calls this.
+    // Advances the table by `seconds`; the page calls this once per frame.
     Q_INVOKABLE void advance(double seconds);
 
 signals:
@@ -116,6 +118,10 @@ signals:
     void scoreChanged();
     void bestChanged();
     void onTableChanged();
+    void runningChanged();
+    void starsChanged();
+    void dropTargetsChanged();
+    void ballSaveChanged();
     void bumperHit(int index);
     void slingshotHit(int index);
     void flipped(int side);
@@ -136,12 +142,14 @@ private:
     void handleEvents();
     void updateBest();
     void updateRunning();
-    void onFrame();
+    void syncParts();
 
     std::unique_ptr<pinball::Table> m_table;
-    QTimer m_frameTimer;
-    QElapsedTimer m_clock;
     bool m_onTable = false;
+    bool m_running = false;
+    QVariantList m_stars;
+    QVariantList m_dropTargets;
+    bool m_ballSave = false;
     long long m_lastScore = 0;
     mutable QSettings m_settings;
 };

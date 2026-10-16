@@ -28,9 +28,7 @@ PinballGame::PinballGame(QObject* parent)
     , m_table(std::make_unique<pinball::Table>())
     , m_settings()
 {
-    m_frameTimer.setTimerType(Qt::PreciseTimer);
-    m_frameTimer.setInterval(16);
-    connect(&m_frameTimer, &QTimer::timeout, this, &PinballGame::onFrame);
+    syncParts();
     connect(this, &GameSession::activeChanged, this, &PinballGame::updateRunning);
     connect(this, &GameSession::completeChanged, this, &PinballGame::updateRunning);
     connect(this, &GameSession::pausedChanged, this, &PinballGame::updateRunning);
@@ -121,31 +119,44 @@ qreal PinballGame::rightAngle() const
     return degrees(m_table->flippers()[1].angle);
 }
 
-QVariantList PinballGame::stars() const
+// Stars, drop targets and the ball save change a few times a ball, not every
+// frame; refreshing them only on change keeps each frame's work small.
+void PinballGame::syncParts()
 {
-    QVariantList out;
+    QVariantList stars;
     for (const auto& star : m_table->stars()) {
         QVariantMap m = point(star.centre);
         m.insert(QStringLiteral("active"), star.active);
         m.insert(QStringLiteral("r"), star.radius);
-        // 0 while fresh, rising to 1 over the last few seconds of its life.
-        m.insert(QStringLiteral("fade"), std::clamp((star.age - (star.life - 4.0)) / 4.0, 0.0, 1.0));
-        out.append(m);
+        // 0 while fresh, rising to 1 over the last few seconds of its life
+        // (in twentieths, so it changes a few times a second, not every frame).
+        const double fade = std::clamp((star.age - (star.life - 4.0)) / 4.0, 0.0, 1.0);
+        m.insert(QStringLiteral("fade"), std::round(fade * 20) / 20);
+        stars.append(m);
     }
-    return out;
-}
+    if (stars != m_stars) {
+        m_stars = stars;
+        emit starsChanged();
+    }
 
-QVariantList PinballGame::dropTargets() const
-{
-    QVariantList out;
+    QVariantList drops;
     for (const auto& d : m_table->dropTargets()) {
-        out.append(QVariantMap {
+        drops.append(QVariantMap {
             { QStringLiteral("x1"), d.a.x }, { QStringLiteral("y1"), d.a.y },
             { QStringLiteral("x2"), d.b.x }, { QStringLiteral("y2"), d.b.y },
             { QStringLiteral("down"), d.down },
         });
     }
-    return out;
+    if (drops != m_dropTargets) {
+        m_dropTargets = drops;
+        emit dropTargetsChanged();
+    }
+
+    const bool save = m_table->ballSave() > 0;
+    if (save != m_ballSave) {
+        m_ballSave = save;
+        emit ballSaveChanged();
+    }
 }
 
 QVariantList PinballGame::lights() const
@@ -207,6 +218,7 @@ void PinballGame::advance(double seconds)
         return;
     m_table->step(seconds);
     handleEvents();
+    syncParts();
     emit frame();
 }
 
@@ -214,6 +226,7 @@ void PinballGame::createGame(const QString& level)
 {
     m_table = std::make_unique<pinball::Table>(modeFor(level), QRandomGenerator::global()->generate64());
     m_lastScore = 0;
+    syncParts();
     emit scoreChanged();
     emit bestChanged();
     emit frame();
@@ -254,6 +267,7 @@ bool PinballGame::restoreState(const QVariantMap& state)
     p.stageBank = state.value(QStringLiteral("stageBank")).toBool();
     m_table->restore(p);
     m_lastScore = m_table->score();
+    syncParts();
     emit scoreChanged();
     emit bestChanged();
     emit frame();
@@ -363,17 +377,10 @@ void PinballGame::updateBest()
 void PinballGame::updateRunning()
 {
     const bool run = m_onTable && active() && !complete() && !paused();
-    if (run && !m_frameTimer.isActive()) {
-        m_clock.start();
-        m_frameTimer.start();
-    } else if (!run && m_frameTimer.isActive()) {
-        m_frameTimer.stop();
+    if (run == m_running)
+        return;
+    m_running = run;
+    if (!run)
         updateBest();
-    }
-}
-
-void PinballGame::onFrame()
-{
-    const double seconds = m_clock.restart() / 1000.0;
-    advance(seconds);
+    emit runningChanged();
 }
