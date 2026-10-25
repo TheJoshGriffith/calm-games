@@ -16,5 +16,6 @@ QtObject {
     readonly property string play: "M7 4l12 8-12 8z"
     readonly property string share: "M12 3v12M8 7l4-4 4 4M9 10H6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-3"
     readonly property string copy: "M9 9h10v11H9zM5 15V4h10"
+    readonly property string external: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"
     readonly property string code: "M5 9h14M5 15h14M10 4L8 20M16 4l-2 16"
 }

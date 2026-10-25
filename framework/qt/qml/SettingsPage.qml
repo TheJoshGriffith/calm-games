@@ -219,6 +219,68 @@ CalmPage {
                 }
             }
 
+            // Every Gwynant game is named after Llyn Gwynant, so each one points
+            // players towards the valley itself.
+            SettingsGroup {
+                width: parent.width
+                title: qsTr("About")
+
+                T.AbstractButton {
+                    id: visitWales
+                    width: parent.width
+                    implicitHeight: walesText.implicitHeight + 28
+                    text: qsTr("Support Wales by visiting Nant Gwynant")
+                    Accessible.role: Accessible.Link
+                    Accessible.name: text
+                    Accessible.description: qsTr("Opens visitwales.com")
+                    onClicked: {
+                        SoundBank.play("tap")
+                        Qt.openUrlExternally("https://www.visitwales.com/")
+                    }
+
+                    background: Rectangle {
+                        color: visitWales.pressed ? Theme.peer : "transparent"
+                        Behavior on color { ColorAnimation { duration: Theme.quick } }
+                    }
+
+                    contentItem: Item {
+                        Column {
+                            id: walesText
+                            anchors.left: parent.left
+                            anchors.right: walesIcon.left
+                            anchors.leftMargin: 16
+                            anchors.rightMargin: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 2
+
+                            CalmText {
+                                width: parent.width
+                                text: visitWales.text
+                                font.weight: Font.DemiBold
+                                wrapMode: Text.WordWrap
+                            }
+                            CalmText {
+                                width: parent.width
+                                text: qsTr("Plan a trip with Visit Wales")
+                                font.pixelSize: 14
+                                color: Theme.accent
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+
+                        Icon {
+                            id: walesIcon
+                            anchors.right: parent.right
+                            anchors.rightMargin: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            size: 20
+                            path: Icons.external
+                            color: Theme.muted
+                        }
+                    }
+                }
+            }
+
             CalmText {
                 width: parent.width
                 horizontalAlignment: Text.AlignHCenter
