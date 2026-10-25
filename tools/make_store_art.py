@@ -9,7 +9,9 @@ store/<game>.json beside the first light phone screenshot) and
 <out>/<game>/icon-512.png (the listing and search icon, from the iOS app
 icon); and, for the App Store product page header, header-3840x1646.png and
 header-5244x2950.png (three phones on the theme ground, no text, since the
-App Store lays the app's name and icon over the header). Needs Pillow.
+App Store lays the app's name and icon over the header), and search.png
+(3840 x 2560, the App Store search result: the listing's searchLines
+beside two phones). Needs Pillow.
 """
 
 import argparse
@@ -76,6 +78,36 @@ def header(game, screens, size):
     return art.convert("RGB")
 
 
+def search_result(game, listing, screens):
+    """The App Store search result: a short pitch, large enough to read in a
+    list, beside the first shot on a phone in light and in dark."""
+    width, height = 3840, 2560
+    art = Image.new("RGBA", (width, height), GROUND)
+    shots = [next(iter(sorted(screens.glob(f"{game}/iphone-6.9/01-*-{theme}.png"))), None)
+             for theme in ("light", "dark")]
+    if all(shots):
+        phone_w = 820
+        back, front = phone(shots[1], phone_w), phone(shots[0], phone_w)
+        art.alpha_composite(back, (width - back.width - 140, 420))
+        art.alpha_composite(front, (width - back.width - front.width + 120, 240))
+    # The listing's searchLines, then "No ads, ever." in the accent, sized to
+    # fit beside the phones and to read in a list of results.
+    draw = ImageDraw.Draw(art)
+    left, room = 220, 1900
+    lines = listing["searchLines"] + ["No ads, ever."]
+    size = 300
+    while True:
+        font = ImageFont.truetype(str(FONTS / "Nunito-ExtraBold.ttf"), size)
+        if max(draw.textlength(text, font=font) for text in lines) <= room:
+            break
+        size -= 10
+    step = round(size * 1.15)
+    top = (height - step * len(lines)) // 2
+    for n, text in enumerate(lines):
+        draw.text((left, top + n * step), text, font=font, fill=INK if n < len(lines) - 1 else ACCENT)
+    return art.convert("RGB")
+
+
 def feature_graphic(game, listing, icon, screens):
     width, height = 1024, 500
     art = Image.new("RGBA", (width, height), GROUND)
@@ -120,6 +152,7 @@ def main():
     icon.convert("RGB").resize((512, 512), Image.LANCZOS).save(out / "icon-512.png", optimize=True)
     for size in [(3840, 1646), (5244, 2950)]:
         header(opts.game, pathlib.Path(opts.screens), size).save(out / f"header-{size[0]}x{size[1]}.png", optimize=True)
+    search_result(opts.game, listing, pathlib.Path(opts.screens)).save(out / "search.png", optimize=True)
     print(out)
 
 

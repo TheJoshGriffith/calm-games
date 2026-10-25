@@ -14,6 +14,11 @@
     "GAMES_PUZZLE",
     "GAMES_BOARD"
   ],
+  "searchLines": [
+    "Every board",
+    "solvable",
+    "by logic"
+  ],
   "play": {
     "title": "Gwynant Minesweeper",
     "shortDescription": "Minesweeper where every board is solvable by logic. No ads, ever.",

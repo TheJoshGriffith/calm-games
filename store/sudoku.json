@@ -14,6 +14,11 @@
     "GAMES_PUZZLE",
     "GAMES_BOARD"
   ],
+  "searchLines": [
+    "Endless",
+    "Sudoku,",
+    "graded by logic"
+  ],
   "play": {
     "title": "Gwynant Sudoku",
     "shortDescription": "Endless Sudoku and 17 variants, graded by technique. No ads, ever.",
