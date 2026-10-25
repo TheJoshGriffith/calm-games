@@ -1,10 +1,10 @@
 name: Store screenshots
 
-# Renders App Store and Google Play screenshots of every game, in light and
-# dark, at the exact sizes the stores ask for (see tools/store_screenshots.py).
-# Run it by hand from the Actions tab before a store submission. The images
-# are kept as a workflow artifact and pushed to the store-screenshots branch,
-# which holds only the latest set.
+# Captures App Store and Google Play screenshots of every game in the iOS
+# simulator, in light and dark, at the exact sizes the stores ask for (see
+# tools/store_screenshots.py). Run it by hand from the Actions tab before a
+# store submission. The images are kept as a workflow artifact and pushed to
+# the store-screenshots branch, which holds only the latest set.
 on:
   workflow_dispatch:
   pull_request:
@@ -20,32 +20,97 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  capture:
-    name: Capture
+  games:
+    name: Find iOS games
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.find.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Qt
+      - id: find
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, pathlib, re
+          games = []
+          for plist in sorted(pathlib.Path("games").glob("*/app/ios/Info.plist.in")):
+              name = plist.parts[1]
+              cmake = (plist.parents[1] / "CMakeLists.txt").read_text()
+              scheme = re.search(r"qt_add_executable\((\w+)", cmake).group(1)
+              games.append({"name": name, "title": name.capitalize(), "scheme": scheme})
+          print("matrix=" + json.dumps({"include": games}))
+          PY
+
+  capture:
+    name: ${{ matrix.title }}
+    needs: games
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.games.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)"
+
+      - name: Install Qt for macOS (host tools)
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
+          host: mac
+          target: desktop
+          arch: clang_64
+          cache: true
+
+      - name: Remember host Qt
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+
+      - name: Install Qt for iOS
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: mac
+          target: ios
+          arch: ios
           modules: 'qtmultimedia'
           cache: true
-      - name: Install system libraries
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libpulse-dev ninja-build
+
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF
-      - name: Build
-        run: cmake --build build --parallel
+        run: |
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build-sim -G Xcode \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF
+
+      - name: Build for the simulator
+        run: |
+          xcodebuild -project build-sim/CalmGames.xcodeproj -scheme "${{ matrix.scheme }}" \
+            -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-sim/dd CODE_SIGNING_ALLOWED=NO build | tail -n 30
+          exit "${PIPESTATUS[0]}"
+
       - name: Capture
-        run: python3 tools/store_screenshots.py --build build --out store-screenshots
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow
+          APP=$(find build-sim -path '*Release-iphonesimulator/${{ matrix.scheme }}.app' -type d | head -n 1)
+          python3 tools/store_screenshots.py --game "${{ matrix.name }}" --app "$APP" --out store-screenshots
+
       - uses: actions/upload-artifact@v4
         with:
-          name: store-screenshots
+          name: store-screenshots-${{ matrix.name }}
           path: store-screenshots
-      - name: Publish to the store-screenshots branch
-        # Pull requests from forks get a read-only token, so skip them.
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+
+  publish:
+    name: Publish to the store-screenshots branch
+    needs: capture
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: store-screenshots-*
+          merge-multiple: true
+          path: store-screenshots
+      - name: Push
         run: |
           cd store-screenshots
           git init -q -b store-screenshots
