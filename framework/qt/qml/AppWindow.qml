@@ -23,6 +23,20 @@ T.ApplicationWindow {
     // A short note over everything, fading away by itself.
     function showNote(message) { toast.show(message) }
 
+    // Development aid: --size <width>x<height> sets the window size, so every
+    // game can be checked (and captured for the stores) at any screen size.
+    Component.onCompleted: {
+        const args = Qt.application.arguments
+        const size = args.indexOf("--size")
+        if (size >= 0 && size + 1 < args.length) {
+            const wh = args[size + 1].split("x")
+            if (wh.length === 2) {
+                width = parseInt(wh[0])
+                height = parseInt(wh[1])
+            }
+        }
+    }
+
     T.StackView {
         id: stack
         anchors.fill: parent

@@ -16,6 +16,9 @@ Without Qt installed, only the pure C++ engines and their tests build.
 
 Screens can be captured headless for review:
 `QT_QPA_PLATFORM=offscreen ./build/games/sudoku/app/CalmSudoku --play Hard --screenshot shot.png`
+(every game also takes `--size <w>x<h>`). Store screenshots for every game come
+from `tools/store_screenshots.py`, or the "Store screenshots" workflow, which
+pushes them to the `store-screenshots` branch.
 
 ## Ownership
 

@@ -1,0 +1,56 @@
+name: Store screenshots
+
+# Renders App Store and Google Play screenshots of every game, in light and
+# dark, at the exact sizes the stores ask for (see tools/store_screenshots.py).
+# Run it by hand from the Actions tab before a store submission. The images
+# are kept as a workflow artifact and pushed to the store-screenshots branch,
+# which holds only the latest set.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tools/store_screenshots.py'
+      - '.github/workflows/screenshots.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    name: Capture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          modules: 'qtmultimedia'
+          cache: true
+      - name: Install system libraries
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libpulse-dev ninja-build
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCALM_BUILD_TESTS=OFF -DCALM_BUILD_TOOLS=OFF
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Capture
+        run: python3 tools/store_screenshots.py --build build --out store-screenshots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: store-screenshots
+          path: store-screenshots
+      - name: Publish to the store-screenshots branch
+        # Pull requests from forks get a read-only token, so skip them.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          cd store-screenshots
+          git init -q -b store-screenshots
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Store screenshots from ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" store-screenshots
