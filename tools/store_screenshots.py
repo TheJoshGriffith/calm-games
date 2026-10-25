@@ -27,10 +27,10 @@ import time
 
 from PIL import Image
 
-# name: (device type to look for, exact screenshot size).
+# name: (device types in order of preference, exact screenshot size).
 DEVICES = {
-    "iphone-6.9": ("Pro Max", (1320, 2868)),
-    "ipad-13": ("iPad Pro 13-inch", (2064, 2752)),
+    "iphone-6.9": (["iPhone 17 Pro Max", "iPhone 16 Pro Max", "iPhone Air", "iPhone 16 Plus"], (1320, 2868)),
+    "ipad-13": (["iPad Pro 13-inch (M5)", "iPad Pro 13-inch (M4)", "iPad Air 13-inch (M3)"], (2064, 2752)),
 }
 
 # Play phone images: the iPhone shot with these many pixels cut from the top
@@ -83,15 +83,16 @@ def simctl(*args, check=True):
     return subprocess.run(["xcrun", "simctl", *args], check=check, capture_output=True, text=True).stdout
 
 
-def create_device(pattern):
-    """Boots a new simulator of the newest device type whose name has `pattern`."""
+def create_device(names):
+    """Boots a new simulator of the first of `names` the newest iOS supports."""
     runtimes = [r for r in json.loads(simctl("list", "runtimes", "-j"))["runtimes"]
                 if r.get("platform") == "iOS" and r.get("isAvailable")]
     runtime = max(runtimes, key=lambda r: [int(p) for p in r["version"].split(".")])
-    types = [t for t in runtime["supportedDeviceTypes"] if pattern in t["name"]]
-    if not types:
-        raise RuntimeError(f"no '{pattern}' simulator for iOS {runtime['version']}")
-    device_type = types[-1]
+    supported = {t["name"]: t for t in runtime["supportedDeviceTypes"]}
+    found = [supported[name] for name in names if name in supported]
+    if not found:
+        raise RuntimeError(f"none of {names} on iOS {runtime['version']}")
+    device_type = found[0]
     print(f"{device_type['name']}, iOS {runtime['version']}", flush=True)
     udid = simctl("create", f"Store {device_type['name']}", device_type["identifier"], runtime["identifier"]).strip()
     simctl("boot", udid)
@@ -105,7 +106,14 @@ def create_device(pattern):
 def capture(udid, app, bundle, args, out, settle):
     simctl("uninstall", udid, bundle, check=False)
     simctl("install", udid, str(app))
-    simctl("launch", udid, bundle, *args)
+    # A launch straight after an install now and then fails; try again.
+    for attempt in range(3):
+        launch = subprocess.run(["xcrun", "simctl", "launch", udid, bundle, *args], capture_output=True, text=True)
+        if launch.returncode == 0:
+            break
+        time.sleep(3)
+    else:
+        raise RuntimeError(f"launch failed: {launch.stderr.strip()}")
     time.sleep(settle)
     out.parent.mkdir(parents=True, exist_ok=True)
     simctl("io", udid, "screenshot", "--type=png", str(out))
@@ -122,15 +130,20 @@ def main():
 
     bundle = f"com.thejoshgriffith.calm.{opts.game}"
     failures = 0
-    for device, (pattern, size) in DEVICES.items():
-        udid = create_device(pattern)
+    for device, (names, size) in DEVICES.items():
+        udid = create_device(names)
         try:
             for theme in THEMES:
                 simctl("ui", udid, "appearance", theme)
                 for number, (shot, args) in enumerate(GAMES[opts.game], start=1):
                     name = f"{number:02d}-{shot}-{theme}.png"
                     out = pathlib.Path(opts.out, opts.game, device, name)
-                    capture(udid, opts.app, bundle, args, out, opts.settle)
+                    try:
+                        capture(udid, opts.app, bundle, args, out, opts.settle)
+                    except (subprocess.CalledProcessError, RuntimeError) as error:
+                        print(f"{out}: {error}", file=sys.stderr)
+                        failures += 1
+                        continue
                     with Image.open(out) as image:
                         if image.size != size:
                             print(f"{out}: {image.size}, expected {size}", file=sys.stderr)
