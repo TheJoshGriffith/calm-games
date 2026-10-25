@@ -1,7 +1,10 @@
 #include "Platform.h"
 
+#include <QtGlobal>
+
 #import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 
 namespace calm::platform {
 
@@ -102,6 +105,68 @@ void share(const QString& text, const QRectF& anchor, const std::function<void()
 void copyToClipboard(const QString& text)
 {
     UIPasteboard.generalPasteboard.string = text.toNSString();
+}
+
+namespace {
+
+UIColor* g_barColor = nil;
+UIUserInterfaceStyle g_barStyle = UIUserInterfaceStyleUnspecified;
+
+void applySystemBars()
+{
+    if (!g_barColor)
+        return;
+    int windows = 0;
+    for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:[UIWindowScene class]])
+            continue;
+        for (UIWindow* window in ((UIWindowScene*)scene).windows) {
+            ++windows;
+            window.backgroundColor = g_barColor;
+            window.overrideUserInterfaceStyle = g_barStyle;
+            UIViewController* root = window.rootViewController;
+            if (!root)
+                continue;
+            root.view.backgroundColor = g_barColor;
+            static NSMutableSet* adapted = [NSMutableSet set];
+            if (![adapted containsObject:[root class]]) {
+                [adapted addObject:[root class]];
+                IMP followStyle = imp_implementationWithBlock(^UIStatusBarStyle(id) { return UIStatusBarStyleDefault; });
+                class_replaceMethod([root class], @selector(preferredStatusBarStyle), followStyle, "q@:");
+            }
+            [root setNeedsStatusBarAppearanceUpdate];
+        }
+    }
+    qInfo("system bars: coloured %d window(s)", windows);
+}
+
+} // namespace
+
+void setSystemBars(const QColor& background, const QString& style)
+{
+    // Qt sizes its window to the safe area, so the status bar and home
+    // indicator sit over the root view's background (black by default), and
+    // Qt's view controller always asks for white status bar text. Colour the
+    // background, and have the status bar follow the window's interface style
+    // (pinned to the theme, or left to the system) instead.
+    g_barColor = [UIColor colorWithRed:background.redF() green:background.greenF() blue:background.blueF() alpha:1];
+    g_barStyle = style == QLatin1String("dark") ? UIUserInterfaceStyleDark
+        : style == QLatin1String("light")       ? UIUserInterfaceStyleLight
+                                                : UIUserInterfaceStyleUnspecified;
+    applySystemBars();
+
+    // The first call can come before the scene and its window are up, so
+    // apply again whenever a window appears or the scene becomes active.
+    static bool observing = false;
+    if (!observing) {
+        observing = true;
+        NSNotificationCenter* center = NSNotificationCenter.defaultCenter;
+        for (NSNotificationName name in @[ UIWindowDidBecomeVisibleNotification, UIWindowDidBecomeKeyNotification,
+                                           UISceneDidActivateNotification ]) {
+            [center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue
+                            usingBlock:^(NSNotification*) { applySystemBars(); }];
+        }
+    }
 }
 
 } // namespace calm::platform

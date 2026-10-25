@@ -23,9 +23,23 @@ T.ApplicationWindow {
     // A short note over everything, fading away by itself.
     function showNote(message) { toast.show(message) }
 
+    // The bands around the window (status bar, home indicator) match the theme.
+    function updateSystemBars() {
+        SystemBars.update(Theme.ground, Settings.theme === "system" ? "" : Theme.dark ? "dark" : "light")
+    }
+    Connections {
+        target: Theme
+        function onGroundChanged() { window.updateSystemBars() }
+    }
+    Connections {
+        target: Settings
+        function onThemeChanged() { window.updateSystemBars() }
+    }
+
     // Development aid: --size <width>x<height> sets the window size, so every
     // game can be checked (and captured for the stores) at any screen size.
     Component.onCompleted: {
+        updateSystemBars()
         const args = Qt.application.arguments
         const size = args.indexOf("--size")
         if (size >= 0 && size + 1 < args.length) {
