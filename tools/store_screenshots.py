@@ -51,7 +51,8 @@ GAMES = {
     ],
     "solitaire": [
         ("klondike", ["--play", "Klondike"]),
-        ("spider", ["--play", "Spider · Two suits"]),
+        # Names with "·" arrive garbled through simctl, so no Spider here.
+        ("pyramid", ["--play", "Pyramid"]),
         ("freecell", ["--play", "FreeCell"]),
         ("tripeaks", ["--play", "TriPeaks"]),
         ("home", []),
