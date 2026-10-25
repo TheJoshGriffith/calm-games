@@ -1,0 +1,54 @@
+name: Upload store screenshots
+
+# Puts the images on the store-screenshots branch (made by the "Store
+# screenshots" workflow) on each game's App Store version that is still
+# being prepared, replacing the screenshots there (see
+# tools/upload_screenshots.py). Run it by hand from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      games:
+        description: Games to upload, separated by spaces
+        default: sudoku solitaire minesweeper pinball mahjong
+  pull_request:
+    paths:
+      - 'tools/upload_screenshots.py'
+      - '.github/workflows/upload-screenshots.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upload-screenshots
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Upload to App Store Connect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: store-screenshots
+          path: store-screenshots
+      - run: python3 -m pip install --quiet requests 'pyjwt[crypto]'
+      - name: Upload
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          GAMES: ${{ inputs.games || 'sudoku solitaire minesweeper pinball mahjong' }}
+          # Pull requests only check which images would go up.
+          DRY_RUN: ${{ github.event_name == 'pull_request' && '--dry-run' || '' }}
+        run: |
+          failed=""
+          for game in $GAMES; do
+            echo "::group::$game"
+            python3 tools/upload_screenshots.py --game "$game" --dir store-screenshots $DRY_RUN || failed="$failed $game"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Upload failed for:$failed"
+            exit 1
+          fi
