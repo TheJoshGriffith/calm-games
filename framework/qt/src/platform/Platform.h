@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QRectF>
 #include <QString>
 
@@ -25,5 +26,10 @@ void share(const QString& text, const QRectF& anchor, const std::function<void()
 
 // Puts `text` on the clipboard.
 void copyToClipboard(const QString& text);
+
+// Gives what the system draws around the app window (on iOS the bands behind
+// the status bar and home indicator) the `background` colour, with status bar
+// text to suit `style`: "light", "dark", or "" to follow the system.
+void setSystemBars(const QColor& background, const QString& style);
 
 } // namespace calm::platform

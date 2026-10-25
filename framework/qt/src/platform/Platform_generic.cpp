@@ -21,6 +21,10 @@ void haptic(const QString&, qreal)
 {
 }
 
+void setSystemBars(const QColor&, const QString&)
+{
+}
+
 #ifdef Q_OS_WASM
 
 // The page (tools/web/index.html) provides window.calm.share(text, copied)

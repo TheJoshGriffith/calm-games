@@ -28,6 +28,7 @@ qt_add_qml_module(calm_framework
         src/SaveStore.h src/SaveStore.cpp
         src/Stats.h src/Stats.cpp
         src/Sharing.h src/Sharing.cpp
+        src/SystemBars.h src/SystemBars.cpp
     QML_FILES
         qml/Theme.qml
         qml/Icons.qml
