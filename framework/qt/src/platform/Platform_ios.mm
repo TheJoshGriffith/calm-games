@@ -2,6 +2,7 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 
 namespace calm::platform {
 
@@ -102,6 +103,39 @@ void share(const QString& text, const QRectF& anchor, const std::function<void()
 void copyToClipboard(const QString& text)
 {
     UIPasteboard.generalPasteboard.string = text.toNSString();
+}
+
+void setSystemBars(const QColor& background, const QString& style)
+{
+    // Qt sizes its window to the safe area, so the status bar and home
+    // indicator sit over the root view's background (black by default), and
+    // Qt's view controller always asks for white status bar text. Colour the
+    // background, and have the status bar follow the window's interface style
+    // (pinned to the theme, or left to the system) instead.
+    UIColor* color = [UIColor colorWithRed:background.redF() green:background.greenF()
+                                      blue:background.blueF() alpha:1];
+    const UIUserInterfaceStyle interfaceStyle = style == QLatin1String("dark") ? UIUserInterfaceStyleDark
+        : style == QLatin1String("light")                                       ? UIUserInterfaceStyleLight
+                                                                                : UIUserInterfaceStyleUnspecified;
+    for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:[UIWindowScene class]])
+            continue;
+        for (UIWindow* window in ((UIWindowScene*)scene).windows) {
+            window.backgroundColor = color;
+            window.overrideUserInterfaceStyle = interfaceStyle;
+            UIViewController* root = window.rootViewController;
+            if (!root)
+                continue;
+            root.view.backgroundColor = color;
+            static NSMutableSet* adapted = [NSMutableSet set];
+            if (![adapted containsObject:[root class]]) {
+                [adapted addObject:[root class]];
+                IMP followStyle = imp_implementationWithBlock(^UIStatusBarStyle(id) { return UIStatusBarStyleDefault; });
+                class_replaceMethod([root class], @selector(preferredStatusBarStyle), followStyle, "q@:");
+            }
+            [root setNeedsStatusBarAppearanceUpdate];
+        }
+    }
 }
 
 } // namespace calm::platform
