@@ -1,0 +1,22 @@
+{
+  "locale": "en-GB",
+  "name": "Gwynant Sudoku",
+  "subtitle": "Calm puzzles, no ads",
+  "promotionalText": "Endless Sudoku with exactly one solution per puzzle, graded by the techniques it needs. Seventeen variants including Killer, Thermo and Jigsaw. No ads, ever.",
+  "description": "A quiet Sudoku with endless puzzles and nothing in the way.\n\nEvery puzzle is freshly generated, has exactly one solution and is graded Easy, Medium, Hard or Expert by the solving techniques it really needs, from singles through pairs and X-Wings to swordfish.\n\nMORE THAN CLASSIC\nSeventeen variants when you want something new: Killer, Thermo, Arrow, Sandwich, Kropki, XV, Even-Odd, Little Killer, German Whispers, Renban, Palindrome, Diagonal, Anti-Knight, Anti-King, Windoku, Non-Consecutive and Jigsaw.\n\nMADE FOR SOLVING\n• Pencil marks that tidy themselves as you place numbers\n• Highlights for the row, column, box and matching numbers\n• A hint whenever you're stuck\n• Unlimited undo\n• Share any puzzle with a short code so friends can play the very same grid\n\nCALM BY DESIGN\n• No ads, no in-app purchases, no accounts, no tracking. Ever.\n• Light and dark themes that follow your device\n• Soft, optional sounds and gentle haptics\n• Your game is saved the moment you leave\n• Statistics for every mode, kept on your device\n\nGwynant games are free and open source, made with care in the spirit of Llyn Gwynant: quiet, simple and unhurried.",
+  "keywords": "killer,puzzle,logic,number,brain,jigsaw,thermo,variant,kropki,sandwich,offline,no ads,zen",
+  "supportUrl": "https://github.com/TheJoshGriffith/calm-games/issues",
+  "marketingUrl": "https://sudoku.gwynant.app",
+  "privacyPolicyUrl": "https://github.com/TheJoshGriffith/calm-games/blob/main/PRIVACY.md",
+  "copyright": "2026 Josh Griffith",
+  "primaryCategory": "GAMES",
+  "primarySubcategories": [
+    "GAMES_PUZZLE",
+    "GAMES_BOARD"
+  ],
+  "play": {
+    "title": "Gwynant Sudoku",
+    "shortDescription": "Endless Sudoku and 17 variants, graded by technique. No ads, ever.",
+    "fullDescription": "A quiet Sudoku with endless puzzles and nothing in the way.\n\nEvery puzzle is freshly generated, has exactly one solution and is graded Easy, Medium, Hard or Expert by the solving techniques it really needs, from singles through pairs and X-Wings to swordfish.\n\nMORE THAN CLASSIC\nSeventeen variants when you want something new: Killer, Thermo, Arrow, Sandwich, Kropki, XV, Even-Odd, Little Killer, German Whispers, Renban, Palindrome, Diagonal, Anti-Knight, Anti-King, Windoku, Non-Consecutive and Jigsaw.\n\nMADE FOR SOLVING\n• Pencil marks that tidy themselves as you place numbers\n• Highlights for the row, column, box and matching numbers\n• A hint whenever you're stuck\n• Unlimited undo\n• Share any puzzle with a short code so friends can play the very same grid\n\nCALM BY DESIGN\n• No ads, no in-app purchases, no accounts, no tracking. Ever.\n• Light and dark themes that follow your device\n• Soft, optional sounds and gentle haptics\n• Your game is saved the moment you leave\n• Statistics for every mode, kept on your device\n\nGwynant games are free and open source, made with care in the spirit of Llyn Gwynant: quiet, simple and unhurried."
+  }
+}

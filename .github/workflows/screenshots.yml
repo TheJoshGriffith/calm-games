@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - 'tools/store_screenshots.py'
+      - 'tools/make_store_art.py'
       - '.github/workflows/screenshots.yml'
 
 permissions:
@@ -106,11 +107,21 @@ jobs:
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          path: repo
       - uses: actions/download-artifact@v4
         with:
           pattern: store-screenshots-*
           merge-multiple: true
           path: store-screenshots
+      # Google Play's feature graphic and listing icon, drawn from the shots.
+      - name: Play listing art
+        run: |
+          python3 -m pip install --quiet pillow
+          for game in $(ls store-screenshots); do
+            python3 repo/tools/make_store_art.py --game "$game" --screens store-screenshots --out store-screenshots/play-art
+          done
       - name: Push
         run: |
           cd store-screenshots

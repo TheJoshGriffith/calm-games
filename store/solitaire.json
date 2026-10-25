@@ -1,0 +1,22 @@
+{
+  "locale": "en-GB",
+  "name": "Gwynant Solitaire",
+  "subtitle": "Klondike and more, no ads",
+  "promotionalText": "Seven classic patience games on one calm table: Klondike, FreeCell, Spider, Yukon, Pyramid, TriPeaks and Golf. No ads, ever.",
+  "description": "Classic patience on a calm, uncluttered table.\n\nSEVEN GAMES\n• Klondike, with one-card or three-card draws\n• FreeCell\n• Spider, with one, two or four suits\n• Yukon\n• Pyramid\n• TriPeaks\n• Golf\n\nMADE FOR PLAYING\n• Large, clear cards that are easy to read on any screen\n• Double-tap a card to send it home, or drag it where you like\n• Unlimited undo\n\nCALM BY DESIGN\n• No ads, no in-app purchases, no accounts, no tracking. Ever.\n• Light and dark themes that follow your device\n• Soft, optional sounds and gentle haptics\n• Your game is saved the moment you leave\n\nGwynant games are free and open source, made with care in the spirit of Llyn Gwynant: quiet, simple and unhurried.",
+  "keywords": "klondike,patience,freecell,spider,pyramid,tripeaks,golf,yukon,cards,card game,offline,no ads,zen",
+  "supportUrl": "https://github.com/TheJoshGriffith/calm-games/issues",
+  "marketingUrl": "https://solitaire.gwynant.app",
+  "privacyPolicyUrl": "https://github.com/TheJoshGriffith/calm-games/blob/main/PRIVACY.md",
+  "copyright": "2026 Josh Griffith",
+  "primaryCategory": "GAMES",
+  "primarySubcategories": [
+    "GAMES_CARD",
+    "GAMES_PUZZLE"
+  ],
+  "play": {
+    "title": "Gwynant Solitaire",
+    "shortDescription": "Klondike, FreeCell, Spider and more on one calm table. No ads, ever.",
+    "fullDescription": "Classic patience on a calm, uncluttered table.\n\nSEVEN GAMES\n• Klondike, with one-card or three-card draws\n• FreeCell\n• Spider, with one, two or four suits\n• Yukon\n• Pyramid\n• TriPeaks\n• Golf\n\nMADE FOR PLAYING\n• Large, clear cards that are easy to read on any screen\n• Double-tap a card to send it home, or drag it where you like\n• Unlimited undo\n\nCALM BY DESIGN\n• No ads, no in-app purchases, no accounts, no tracking. Ever.\n• Light and dark themes that follow your device\n• Soft, optional sounds and gentle haptics\n• Your game is saved the moment you leave\n\nGwynant games are free and open source, made with care in the spirit of Llyn Gwynant: quiet, simple and unhurried."
+  }
+}

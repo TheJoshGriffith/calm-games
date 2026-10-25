@@ -1,0 +1,22 @@
+{
+  "locale": "en-GB",
+  "name": "Gwynant Pinball",
+  "subtitle": "A quiet table, no ads",
+  "promotionalText": "A calm pinball table: catch the stars, clear the targets and see how far you get. Play Gentle for endless balls or Classic for a high score. No ads, ever.",
+  "description": "A pinball table that keeps things calm.\n\nCatch the stars that appear around the table to clear each stage. From stage two, knock down the drop targets too. Every stage brings a little more to do.\n\nTWO WAYS TO PLAY\n• Gentle: endless balls, stage after stage, for when you just want to play\n• Classic: three balls and a best score to beat, with an extra ball for every stage you clear\n\nMADE FOR PLAYING\n• Smooth physics that keep up with your screen\n• Tap either side of the screen to flip\n• A ball save on every ball\n\nCALM BY DESIGN\n• No ads, no in-app purchases, no accounts, no tracking. Ever.\n• Light and dark themes that follow your device\n• Soft, optional sounds and gentle haptics\n• Your game is saved the moment you leave\n\nGwynant games are free and open source, made with care in the spirit of Llyn Gwynant: quiet, simple and unhurried.",
+  "keywords": "arcade,flipper,ball,table,retro,classic,score,relaxing,stages,offline,no ads,zen,casual",
+  "supportUrl": "https://github.com/TheJoshGriffith/calm-games/issues",
+  "marketingUrl": "https://pinball.gwynant.app",
+  "privacyPolicyUrl": "https://github.com/TheJoshGriffith/calm-games/blob/main/PRIVACY.md",
+  "copyright": "2026 Josh Griffith",
+  "primaryCategory": "GAMES",
+  "primarySubcategories": [
+    "GAMES_ARCADE",
+    "GAMES_CASUAL"
+  ],
+  "play": {
+    "title": "Gwynant Pinball",
+    "shortDescription": "A calm pinball table with stages, stars and targets. No ads, ever.",
+    "fullDescription": "A pinball table that keeps things calm.\n\nCatch the stars that appear around the table to clear each stage. From stage two, knock down the drop targets too. Every stage brings a little more to do.\n\nTWO WAYS TO PLAY\n• Gentle: endless balls, stage after stage, for when you just want to play\n• Classic: three balls and a best score to beat, with an extra ball for every stage you clear\n\nMADE FOR PLAYING\n• Smooth physics that keep up with your screen\n• Tap either side of the screen to flip\n• A ball save on every ball\n\nCALM BY DESIGN\n• No ads, no in-app purchases, no accounts, no tracking. Ever.\n• Light and dark themes that follow your device\n• Soft, optional sounds and gentle haptics\n• Your game is saved the moment you leave\n\nGwynant games are free and open source, made with care in the spirit of Llyn Gwynant: quiet, simple and unhurried."
+  }
+}
