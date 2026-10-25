@@ -14,6 +14,11 @@
     "GAMES_BOARD",
     "GAMES_PUZZLE"
   ],
+  "searchLines": [
+    "Every deal",
+    "can be",
+    "cleared"
+  ],
   "play": {
     "title": "Gwynant Mahjong",
     "shortDescription": "Mahjong solitaire where every deal can be cleared. No ads, ever.",

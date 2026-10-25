@@ -14,6 +14,11 @@
     "GAMES_CASUAL",
     "GAMES_ACTION"
   ],
+  "searchLines": [
+    "A calm",
+    "pinball",
+    "table"
+  ],
   "play": {
     "title": "Gwynant Pinball",
     "shortDescription": "A calm pinball table with stages, stars and targets. No ads, ever.",

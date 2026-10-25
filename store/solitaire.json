@@ -14,6 +14,11 @@
     "GAMES_CARD",
     "GAMES_PUZZLE"
   ],
+  "searchLines": [
+    "Seven",
+    "classic",
+    "patience games"
+  ],
   "play": {
     "title": "Gwynant Solitaire",
     "shortDescription": "Klondike, FreeCell, Spider and more on one calm table. No ads, ever.",
