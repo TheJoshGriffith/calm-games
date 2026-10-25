@@ -1,0 +1,22 @@
+{
+  "locale": "en-GB",
+  "name": "Gwynant Mahjong",
+  "subtitle": "Calm tile matching, no ads",
+  "promotionalText": "Mahjong solitaire where every deal can be cleared. Six layouts from Garden to Turtle, with gentle hints when you need them. No ads, ever.",
+  "description": "Mahjong solitaire, calm and fair.\n\nMatch free pairs of tiles to clear the board. Every deal is built so it can be cleared, so you're never stuck with a board that can't be won.\n\nSIX LAYOUTS\nGarden, Pyramid, Fortress, Butterfly, Lantern and the classic Turtle, from a gentle start to a proper challenge.\n\nMADE FOR PLAYING\n• Clear, readable tiles in calm colours\n• Free tiles stand out, so you can see your moves at a glance\n• Hints when you need them, and unlimited undo\n\nCALM BY DESIGN\n• No ads, no in-app purchases, no accounts, no tracking. Ever.\n• Light and dark themes that follow your device\n• Soft, optional sounds and gentle haptics\n• Your game is saved the moment you leave\n• Statistics for every mode, kept on your device\n\nGwynant games are free and open source, made with care in the spirit of Llyn Gwynant: quiet, simple and unhurried.",
+  "keywords": "solitaire,tiles,match,pairs,turtle,puzzle,shanghai,classic,tile match,offline,no ads,zen,brain",
+  "supportUrl": "https://github.com/TheJoshGriffith/calm-games/issues",
+  "marketingUrl": "https://mahjong.gwynant.app",
+  "privacyPolicyUrl": "https://github.com/TheJoshGriffith/calm-games/blob/main/PRIVACY.md",
+  "copyright": "2026 Josh Griffith",
+  "primaryCategory": "GAMES",
+  "primarySubcategories": [
+    "GAMES_BOARD",
+    "GAMES_PUZZLE"
+  ],
+  "play": {
+    "title": "Gwynant Mahjong",
+    "shortDescription": "Mahjong solitaire where every deal can be cleared. No ads, ever.",
+    "fullDescription": "Mahjong solitaire, calm and fair.\n\nMatch free pairs of tiles to clear the board. Every deal is built so it can be cleared, so you're never stuck with a board that can't be won.\n\nSIX LAYOUTS\nGarden, Pyramid, Fortress, Butterfly, Lantern and the classic Turtle, from a gentle start to a proper challenge.\n\nMADE FOR PLAYING\n• Clear, readable tiles in calm colours\n• Free tiles stand out, so you can see your moves at a glance\n• Hints when you need them, and unlimited undo\n\nCALM BY DESIGN\n• No ads, no in-app purchases, no accounts, no tracking. Ever.\n• Light and dark themes that follow your device\n• Soft, optional sounds and gentle haptics\n• Your game is saved the moment you leave\n• Statistics for every mode, kept on your device\n\nGwynant games are free and open source, made with care in the spirit of Llyn Gwynant: quiet, simple and unhurried."
+  }
+}

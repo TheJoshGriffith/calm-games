@@ -1,0 +1,50 @@
+name: Upload store listing
+
+# Fills in each game's App Store listing (text, URLs, category, age rating,
+# price) from store/<game>.json (see tools/upload_listing.py). Run it by hand
+# from the Actions tab after changing a listing; pull requests only check the
+# listings against Apple's limits.
+on:
+  workflow_dispatch:
+    inputs:
+      games:
+        description: Games to upload, separated by spaces
+        default: sudoku solitaire minesweeper pinball mahjong
+  pull_request:
+    paths:
+      - 'store/**'
+      - 'tools/upload_listing.py'
+      - '.github/workflows/store-listing.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: store-listing
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Upload to App Store Connect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install --quiet requests 'pyjwt[crypto]'
+      - name: Upload
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          GAMES: ${{ inputs.games || 'sudoku solitaire minesweeper pinball mahjong' }}
+          DRY_RUN: ${{ github.event_name == 'pull_request' && '--dry-run' || '' }}
+        run: |
+          failed=""
+          for game in $GAMES; do
+            echo "::group::$game"
+            python3 tools/upload_listing.py --game "$game" $DRY_RUN || failed="$failed $game"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Listing upload failed for:$failed"
+            exit 1
+          fi

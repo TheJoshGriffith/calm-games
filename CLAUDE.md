@@ -19,7 +19,10 @@ Screens can be captured headless for review:
 (every game also takes `--size <w>x<h>`). Offscreen grabs only render layered
 items (icons, card faces) at scale factor 1, so store screenshots come from the
 iOS simulator instead: the "Store screenshots" workflow runs
-`tools/store_screenshots.py` and pushes the images to the `store-screenshots` branch.
+`tools/store_screenshots.py` and pushes the images to the `store-screenshots` branch,
+with Google Play art from `tools/make_store_art.py`. Store listing text lives in
+`store/<game>.json`; "Upload store screenshots" and "Upload store listing" push
+the images and text to App Store Connect.
 
 ## Ownership
 

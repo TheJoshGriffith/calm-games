@@ -1,0 +1,22 @@
+{
+  "locale": "en-GB",
+  "name": "Gwynant Minesweeper",
+  "subtitle": "Logic, not luck. No ads.",
+  "promotionalText": "Classic Minesweeper where every board can be solved by logic alone, so you never have to guess. Four sizes, made for one hand. No ads, ever.",
+  "description": "Minesweeper, calm and fair.\n\nEvery board can be cleared by logic alone, so a game is never lost to a coin toss. Your first tap always opens an area, and a misstep can be taken back with undo.\n\nFOUR SIZES, MADE FOR PHONES\n• Easy: 9 × 9, 10 mines\n• Medium: 10 × 14, 24 mines\n• Hard: 12 × 18, 40 mines\n• Expert: 12 × 20, 52 mines\n\nMADE FOR PLAYING\n• Tall boards that fit the screen, no pinching or scrolling\n• Switch between opening and flagging with one tap\n• Tap a number to clear around it\n\nCALM BY DESIGN\n• No ads, no in-app purchases, no accounts, no tracking. Ever.\n• Light and dark themes that follow your device\n• Soft, optional sounds and gentle haptics\n• Your game is saved the moment you leave\n• Statistics for every mode, kept on your device\n\nGwynant games are free and open source, made with care in the spirit of Llyn Gwynant: quiet, simple and unhurried.",
+  "keywords": "mines,logic,puzzle,classic,no guessing,brain,grid,flag,bomb,offline,no ads,zen,retro",
+  "supportUrl": "https://github.com/TheJoshGriffith/calm-games/issues",
+  "marketingUrl": "https://minesweeper.gwynant.app",
+  "privacyPolicyUrl": "https://github.com/TheJoshGriffith/calm-games/blob/main/PRIVACY.md",
+  "copyright": "2026 Josh Griffith",
+  "primaryCategory": "GAMES",
+  "primarySubcategories": [
+    "GAMES_PUZZLE",
+    "GAMES_BOARD"
+  ],
+  "play": {
+    "title": "Gwynant Minesweeper",
+    "shortDescription": "Minesweeper where every board is solvable by logic. No ads, ever.",
+    "fullDescription": "Minesweeper, calm and fair.\n\nEvery board can be cleared by logic alone, so a game is never lost to a coin toss. Your first tap always opens an area, and a misstep can be taken back with undo.\n\nFOUR SIZES, MADE FOR PHONES\n• Easy: 9 × 9, 10 mines\n• Medium: 10 × 14, 24 mines\n• Hard: 12 × 18, 40 mines\n• Expert: 12 × 20, 52 mines\n\nMADE FOR PLAYING\n• Tall boards that fit the screen, no pinching or scrolling\n• Switch between opening and flagging with one tap\n• Tap a number to clear around it\n\nCALM BY DESIGN\n• No ads, no in-app purchases, no accounts, no tracking. Ever.\n• Light and dark themes that follow your device\n• Soft, optional sounds and gentle haptics\n• Your game is saved the moment you leave\n• Statistics for every mode, kept on your device\n\nGwynant games are free and open source, made with care in the spirit of Llyn Gwynant: quiet, simple and unhurried."
+  }
+}
