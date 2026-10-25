@@ -1,7 +1,5 @@
 #include "Platform.h"
 
-#include <QtGlobal>
-
 #import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -116,12 +114,10 @@ void applySystemBars()
 {
     if (!g_barColor)
         return;
-    int windows = 0;
     for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
         if (![scene isKindOfClass:[UIWindowScene class]])
             continue;
         for (UIWindow* window in ((UIWindowScene*)scene).windows) {
-            ++windows;
             window.backgroundColor = g_barColor;
             window.overrideUserInterfaceStyle = g_barStyle;
             UIViewController* root = window.rootViewController;
@@ -137,7 +133,6 @@ void applySystemBars()
             [root setNeedsStatusBarAppearanceUpdate];
         }
     }
-    qInfo("system bars: coloured %d window(s)", windows);
 }
 
 } // namespace
