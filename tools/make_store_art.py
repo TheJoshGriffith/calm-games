@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Draw a game's Google Play listing images.
+"""Draw a game's store listing art for Google Play and the App Store.
 
     python3 tools/make_store_art.py --game sudoku --screens store-screenshots --out store-art
 
-Makes <out>/<game>/feature-graphic.png (1024 x 500, the banner at the top of
-the listing: icon, name and subtitle from store/<game>.json beside the first
-light phone screenshot) and <out>/<game>/icon-512.png (the listing and search
-icon, from the iOS app icon). Needs Pillow.
+Makes, for Google Play, <out>/<game>/feature-graphic.png (1024 x 500, the
+banner at the top of the listing: icon, name and subtitle from
+store/<game>.json beside the first light phone screenshot) and
+<out>/<game>/icon-512.png (the listing and search icon, from the iOS app
+icon); and, for the App Store product page header, header-3840x1646.png and
+header-5244x2950.png (three phones on the theme ground, no text, since the
+App Store lays the app's name and icon over the header). Needs Pillow.
 """
 
 import argparse
 import json
 import pathlib
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 FONTS = ROOT / "framework" / "qt" / "fonts"
@@ -31,6 +34,46 @@ def rounded(image, radius):
     ImageDraw.Draw(mask).rounded_rectangle((0, 0, *image.size), radius, fill=255)
     image.putalpha(mask)
     return image
+
+
+def phone(shot, width):
+    """A phone of `width` pixels showing the screenshot at `shot`."""
+    screen = Image.open(shot).convert("RGBA")
+    screen = screen.resize((width, round(screen.height * width / screen.width)), Image.LANCZOS)
+    frame = max(4, width // 30)
+    body = Image.new("RGBA", (width + 2 * frame, screen.height + 2 * frame), INK)
+    body.alpha_composite(rounded(screen, width // 9), (frame, frame))
+    return rounded(body, width // 9 + frame)
+
+
+def header(game, screens, size):
+    """The App Store header: the first three shots on phones, centred, so any
+    crop the store makes keeps the middle phone."""
+    width, height = size
+    art = Image.new("RGBA", size, GROUND)
+    # A soft wash of the accent behind the phones.
+    wash = Image.new("L", size, 0)
+    ImageDraw.Draw(wash).ellipse((width * 0.2, height * 0.1, width * 0.8, height * 1.3), fill=40)
+    wash = wash.filter(ImageFilter.GaussianBlur(height / 8))
+    art = Image.composite(Image.new("RGBA", size, ACCENT), art, wash)
+
+    shots = sorted(screens.glob(f"{game}/iphone-6.9/0[1-3]-*-light.png"))
+    themes = ["light", "dark", "light"]
+    shots = [pathlib.Path(str(s).replace("-light.png", f"-{t}.png")) for s, t in zip(shots, themes)]
+    if len(shots) < 3:
+        return art.convert("RGB")
+    middle_h = height * 0.84
+    side_h = middle_h * 0.86
+    ratio = 1320 / 2868
+    side = [phone(shots[0], round(side_h * ratio)), phone(shots[2], round(side_h * ratio))]
+    centre = phone(shots[1], round(middle_h * ratio))
+    gap = centre.width * 0.18
+    top = round(height * 0.08)
+    for image, x in [(side[0], width / 2 - centre.width / 2 - gap - side[0].width),
+                     (side[1], width / 2 + centre.width / 2 + gap)]:
+        art.alpha_composite(image, (round(x), top + round((middle_h - side_h) / 2)))
+    art.alpha_composite(centre, (round(width / 2 - centre.width / 2), top))
+    return art.convert("RGB")
 
 
 def feature_graphic(game, listing, icon, screens):
@@ -75,6 +118,8 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     feature_graphic(opts.game, listing, icon, pathlib.Path(opts.screens)).save(out / "feature-graphic.png", optimize=True)
     icon.convert("RGB").resize((512, 512), Image.LANCZOS).save(out / "icon-512.png", optimize=True)
+    for size in [(3840, 1646), (5244, 2950)]:
+        header(opts.game, pathlib.Path(opts.screens), size).save(out / f"header-{size[0]}x{size[1]}.png", optimize=True)
     print(out)
 
 
