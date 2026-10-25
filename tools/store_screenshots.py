@@ -114,8 +114,22 @@ def capture(udid, app, bundle, args, out, settle):
         time.sleep(3)
     else:
         raise RuntimeError(f"launch failed: {launch.stderr.strip()}")
-    time.sleep(settle)
+    # The first frame can take a while in CI: until the app draws, the
+    # screen below the status bar is plain black (no theme uses black).
     out.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + 90
+    while True:
+        time.sleep(2)
+        simctl("io", udid, "screenshot", "--type=png", str(out))
+        with Image.open(out) as image:
+            width, height = image.size
+            drawn = image.convert("L").crop((0, height // 4, width, height * 3 // 4)).getextrema()[1] > 0
+        if drawn:
+            break
+        if time.monotonic() > deadline:
+            raise RuntimeError("the app drew nothing within 90 s")
+    # Let opening animations finish.
+    time.sleep(settle)
     simctl("io", udid, "screenshot", "--type=png", str(out))
     simctl("terminate", udid, bundle, check=False)
 
@@ -125,7 +139,7 @@ def main():
     parser.add_argument("--game", required=True, choices=list(GAMES))
     parser.add_argument("--app", required=True, help="the game's iphonesimulator .app bundle")
     parser.add_argument("--out", default="store-screenshots", help="output directory")
-    parser.add_argument("--settle", type=float, default=8, help="seconds from launch to capture")
+    parser.add_argument("--settle", type=float, default=4, help="seconds from the first frame to capture")
     opts = parser.parse_args()
 
     bundle = f"com.thejoshgriffith.calm.{opts.game}"
